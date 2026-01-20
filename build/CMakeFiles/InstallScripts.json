@@ -1,0 +1,8 @@
+{
+	"InstallScripts" : 
+	[
+		"D:/project_real_time_embedded/smart_safe/build/cmake_install.cmake",
+		"D:/project_real_time_embedded/smart_safe/build/cmake/stm32cubemx/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

@@ -2,37 +2,15 @@
     "version": 3,
     "configurePresets": [
         {
-            "name": "default",
-            "hidden": true,
+            "name": "stm32-debug",
+            "displayName": "STM32 H563 Debug",
+            "description": "Configuration for STM32H563ZI using ARM GCC toolchain",
             "generator": "Ninja",
-            "binaryDir": "${sourceDir}/build/${presetName}",
-		    "toolchainFile": "${sourceDir}/cmake/gcc-arm-none-eabi.cmake",
+            "binaryDir": "${sourceDir}/build",
             "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "CMAKE_TOOLCHAIN_FILE": "D:/project_real_time_embedded/smart_safe/toolchain-arm-none-eabi.cmake"
             }
-        },
-        {
-            "name": "Debug",
-            "inherits": "default",
-            "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Debug"
-            }
-        },
-        {
-            "name": "Release",
-            "inherits": "default",
-            "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Release"
-            }
-        }
-    ],
-    "buildPresets": [
-        {
-            "name": "Debug",
-            "configurePreset": "Debug"
-        },
-        {
-            "name": "Release",
-            "configurePreset": "Release"
         }
     ]
 }

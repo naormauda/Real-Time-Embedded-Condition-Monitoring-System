@@ -1,0 +1,8 @@
+{
+    "cmake.cmakePath": "D:/bin/cmake.exe",
+    "cmake.generator": "Ninja",
+    "cmake.configureArgs": [
+        "-DCMAKE_TOOLCHAIN_FILE=D:/project_real_time_embedded/smart_safe/toolchain-arm-none-eabi.cmake"
+    ],
+    "cmake.configureOnOpen": true
+}
