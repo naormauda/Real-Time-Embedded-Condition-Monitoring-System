@@ -96,13 +96,10 @@ deterministic behavior and maintainability.
 
 ## ⚙️ Target Platform
 
-- **MCU**: STM32H563 (MB1404C Discovery Board)
+- **MCU**: STM32H563ZI (Cortex-M33 @ 250MHz)
+- **Board**: NUCLEO-H563ZI
 - **RTOS**: FreeRTOS
 - **Language**: C / C++
-- **Development Tools**:
-  - STM32CubeMX
-  - STM32CubeIDE
-  - Git / GitHub
 
 ---
 
@@ -122,18 +119,13 @@ deterministic behavior and maintainability.
 ## 🚧 Project Status
 
 **Current Phase**:  
-🟡 Stage 3 – RTOS Skeleton & System Bring-Up
+🟢 Stage 2 – Hardware Bring-Up Completed  
+🟡 Stage 3 – RTOS Skeleton & Task Wiring
 
 Completed:
-- System definition and requirements
-- FSM design
-- High-level software architecture
-- Task and data-flow design
-
-In progress:
-- FreeRTOS project skeleton
-- Task and interrupt wiring
-- Timing validation
+- Clock tree configuration (250 MHz)
+- Peripheral configuration (SPI, I2C, GPIO)
+- CubeMX code generation
 
 ---
 
@@ -167,6 +159,18 @@ README.md
 - Clear over clever
 - Maintainable over minimal
 - Architecture before implementation
+
+---
+
+## ⏱️ System Bring-Up Configuration
+
+- External HSE crystal (board-mounted)
+- System clock configured to 250 MHz via PLL
+- Clock tree validated using STM32CubeMX
+
+- I2C1 @ 400 kHz (OLED display, ToF sensor)
+- SPI1 (Mode 3, 8-bit) for accelerometer
+- Manual GPIO-based chip select
 
 ---
 
