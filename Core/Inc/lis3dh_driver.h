@@ -24,6 +24,7 @@ extern "C" {
 /* Includes ------------------------------------------------------------------*/
 #include "stm32h5xx_hal.h"
 #include "stm32h5xx_hal_gpio.h"
+#include "stm32h5xx_hal_spi.h"
 #include <stdint.h>
 #include <stdbool.h>
 
@@ -31,7 +32,7 @@ extern "C" {
 
 /**
  * @brief LIS3DH Operating Mode
- * 
+ *
  * Determines whether the driver talks to real hardware or generates
  * synthetic data for testing purposes.
  */
@@ -42,7 +43,7 @@ typedef enum {
 
 /**
  * @brief LIS3DH Output Data Rate (ODR)
- * 
+ *
  * Controls how frequently the sensor samples acceleration data.
  * Higher rates = more samples per second = more CPU/power consumption.
  */
@@ -59,11 +60,11 @@ typedef enum {
 
 /**
  * @brief LIS3DH Full-Scale Range
- * 
+ *
  * Defines the maximum acceleration that can be measured.
  * ±2g is most sensitive but limited range.
  * ±16g can measure high accelerations but less precise.
- * 
+ *
  * "g" = gravitational acceleration (9.81 m/s²)
  */
 typedef enum {
@@ -75,7 +76,7 @@ typedef enum {
 
 /**
  * @brief LIS3DH Operating Mode (Power vs Resolution)
- * 
+ *
  * Trade-off between power consumption and data quality.
  */
 typedef enum {
@@ -86,7 +87,7 @@ typedef enum {
 
 /**
  * @brief LIS3DH Configuration Structure
- * 
+ *
  * Contains all settings needed to initialize the sensor.
  * User fills this structure and passes it to LIS3DH_Init().
  */
@@ -102,7 +103,7 @@ typedef struct {
 
 /**
  * @brief LIS3DH Driver Handle
- * 
+ *
  * Holds the internal state of the driver.
  * User creates one instance and passes it to all driver functions.
  * This allows multiple sensors on the same system.
@@ -111,14 +112,14 @@ typedef struct {
     LIS3DH_Config_t config;      /**< Configuration */
     bool            initialized; /**< Is the sensor initialized? */
     float           sensitivity; /**< Conversion factor (LSB to mg) */
-    
+
     /* Simulation state (used only in simulation mode) */
     uint32_t        sim_counter; /**< Counter for generating synthetic data */
 } LIS3DH_Handle_t;
 
 /**
  * @brief Raw accelerometer data (3 axes)
- * 
+ *
  * Raw 16-bit signed values directly from sensor registers.
  */
 typedef struct {
@@ -129,7 +130,7 @@ typedef struct {
 
 /**
  * @brief Acceleration data in milli-g (mg)
- * 
+ *
  * Physical units: 1000 mg = 1g = 9.81 m/s²
  * Example: x=1000 means 1g in X direction
  */
@@ -143,7 +144,7 @@ typedef struct {
 
 /**
  * @brief LIS3DH Register Addresses
- * 
+ *
  * These are the internal memory addresses inside the LIS3DH chip.
  * We read/write these via SPI to control and read data from the sensor.
  */
@@ -160,7 +161,7 @@ typedef struct {
 
 /**
  * @brief Expected value of WHO_AM_I register
- * 
+ *
  * Reading this register should return 0x33.
  * This is used to verify that we're talking to a real LIS3DH.
  */
@@ -168,7 +169,7 @@ typedef struct {
 
 /**
  * @brief SPI Communication Bits
- * 
+ *
  * The LIS3DH uses special bits in the address byte for SPI:
  * - Bit 7: Read(1) or Write(0)
  * - Bit 6: Multi-byte mode (1) or single-byte (0)
@@ -181,17 +182,17 @@ typedef struct {
 
 /**
  * @brief Initialize the LIS3DH driver
- * 
+ *
  * This function:
  *   1. Stores configuration in the handle
  *   2. If hardware mode: configures the sensor via SPI
  *   3. If simulation mode: initializes synthetic data generator
  *   4. Calculates sensitivity based on selected range
- * 
+ *
  * @param handle Pointer to driver handle structure
  * @param config Pointer to configuration structure
  * @return true if initialization successful, false otherwise
- * 
+ *
  * @note Must be called before any other driver functions
  * @note In hardware mode, verifies WHO_AM_I register (0x33)
  */
@@ -199,24 +200,24 @@ bool LIS3DH_Init(LIS3DH_Handle_t *handle, const LIS3DH_Config_t *config);
 
 /**
  * @brief De-initialize the driver and power down sensor
- * 
+ *
  * @param handle Pointer to driver handle structure
  * @return true if successful, false otherwise
- * 
+ *
  * @note In hardware mode, sets sensor to power-down mode
  */
 bool LIS3DH_DeInit(LIS3DH_Handle_t *handle);
 
 /**
  * @brief Read raw accelerometer data (16-bit values)
- * 
+ *
  * Reads the X, Y, Z acceleration registers.
  * Data is raw (not converted to physical units).
- * 
+ *
  * @param handle Pointer to driver handle structure
  * @param data Pointer to structure where raw data will be stored
  * @return true if read successful, false otherwise
- * 
+ *
  * @note In simulation mode, generates synthetic raw data
  * @note In hardware mode, reads via SPI
  */
@@ -224,54 +225,54 @@ bool LIS3DH_ReadRaw(LIS3DH_Handle_t *handle, LIS3DH_RawData_t *data);
 
 /**
  * @brief Read acceleration data in milli-g (mg)
- * 
+ *
  * Reads raw data and converts to physical units (mg).
  * 1000 mg = 1g = 9.81 m/s²
- * 
+ *
  * @param handle Pointer to driver handle structure
  * @param data Pointer to structure where converted data will be stored
  * @return true if read successful, false otherwise
- * 
+ *
  * @note This is the preferred function for most applications
  */
 bool LIS3DH_ReadAcceleration(LIS3DH_Handle_t *handle, LIS3DH_AccData_t *data);
 
 /**
  * @brief Check if new data is available
- * 
+ *
  * Checks the STATUS_REG to see if sensor has new data ready.
  * Useful for polling-based data acquisition.
- * 
+ *
  * @param handle Pointer to driver handle structure
  * @return true if new data available, false otherwise
- * 
+ *
  * @note In simulation mode, always returns true
  */
 bool LIS3DH_DataReady(LIS3DH_Handle_t *handle);
 
 /**
  * @brief Read WHO_AM_I register (hardware mode only)
- * 
+ *
  * Reads the device identification register.
  * Should return 0x33 for a genuine LIS3DH.
- * 
+ *
  * @param handle Pointer to driver handle structure
  * @param value Pointer where WHO_AM_I value will be stored
  * @return true if read successful, false otherwise
- * 
+ *
  * @note Returns 0x33 in simulation mode (fake response)
  */
 bool LIS3DH_ReadWhoAmI(LIS3DH_Handle_t *handle, uint8_t *value);
 
 /**
  * @brief Self-test function (hardware mode only)
- * 
+ *
  * Performs sensor self-test by enabling internal test signal
  * and verifying output changes appropriately.
- * 
+ *
  * @param handle Pointer to driver handle structure
  * @return true if self-test passed, false otherwise
- * 
+ *
  * @note In simulation mode, always returns true
  * @note This is optional but recommended for production systems
  */

@@ -1,0 +1,25 @@
+{
+    "configurations": [
+        {
+            "name": "STM32H5",
+            "compilerPath": "D:/bin/arm-none-eabi-gcc.exe",
+            "compileCommands": "${workspaceFolder}/build/compile_commands.json",
+            "includePath": [
+                "${workspaceFolder}/Core/Inc",
+                "${workspaceFolder}/Drivers/STM32H5xx_HAL_Driver/Inc",
+                "${workspaceFolder}/Drivers/STM32H5xx_HAL_Driver/Inc/Legacy",
+                "${workspaceFolder}/Drivers/CMSIS/Device/ST/STM32H5xx/Include",
+                "${workspaceFolder}/Drivers/CMSIS/Include"
+            ],
+            "intelliSenseMode": "gcc-arm",
+            "cStandard": "c11",
+            "cppStandard": "c++17",
+            "defines": [
+                "USE_HAL_DRIVER",
+                "STM32H563xx",
+                "_DEBUG"
+            ]
+        }
+    ],
+    "version": 4
+}
