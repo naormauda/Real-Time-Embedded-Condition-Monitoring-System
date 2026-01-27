@@ -103,13 +103,21 @@ deterministic behavior and maintainability.
 
 ---
 
-## 📦 Hardware Components (Planned)
+## 📦 Hardware Components
 
-- Accelerometer / Vibration sensor (SPI, DMA)
-- Motion / proximity sensor (event-driven)
-- OLED display (I2C)
-- LEDs and buzzer for alerts
-- Servo motor for lock demonstration
+**Implemented:**
+- ✅ **LIS3DH** - 3-axis accelerometer (SPI1)
+  - Connected via SPI (CPOL=1, CPHA=1, Mode 3)
+  - Chip Select: PA4 (GPIO manual control)
+  - Configurable ODR: 1Hz - 400Hz
+  - Configurable range: ±2g / ±4g / ±8g / ±16g
+  - 12-bit high resolution mode
+
+**Planned:**
+- ⏳ Motion / proximity sensor (event-driven)
+- ⏳ OLED display (I2C1 @ 400kHz)
+- ⏳ LEDs and buzzer for alerts
+- ⏳ Servo motor for lock demonstration
 
 > Hardware selection is driven by architectural requirements,
 > not the other way around.
@@ -119,36 +127,72 @@ deterministic behavior and maintainability.
 ## 🚧 Project Status
 
 **Current Phase**:  
-🟢 Stage 2 – Hardware Bring-Up Completed  
-🟡 Stage 3 – RTOS Skeleton & Task Wiring
+🟢 Stage 2 – Hardware Bring-Up **COMPLETED**  
+🟢 Stage 3 – Driver Development **IN PROGRESS**  
+🟡 Stage 4 – RTOS Integration (Next)
 
-Completed:
-- Clock tree configuration (250 MHz)
-- Peripheral configuration (SPI, I2C, GPIO)
-- CubeMX code generation
+**Completed:**
+- ✅ Clock tree configuration (250 MHz via PLL)
+- ✅ Peripheral configuration (SPI1, I2C1, GPIO)
+- ✅ CubeMX code generation
+- ✅ LIS3DH accelerometer driver (full implementation)
+  - Hardware abstraction layer with SPI communication
+  - Support for all ODR rates (1Hz - 400Hz)
+  - Support for all ranges (±2g, ±4g, ±8g, ±16g)
+  - Support for all operating modes (low power, normal, high resolution)
+  - Simulation mode for development without hardware
+  - Data conversion (raw to milli-g)
+
+**In Progress:**
+- 🔄 Driver testing and validation
+- 🔄 Basic sensor reading implementation
+
+**Next Steps:**
+- FreeRTOS integration via CubeMX
+- Sensor acquisition task
+- Data buffering and queue management
 
 ---
 
-## 📂 Repository Structure (Planned)
+## 📂 Repository Structure
 
+```
 /Core
-/Src
-sensor_task.c
-ml_task.c
-fsm_task.c
-output_task.c
-/Inc
-sensor_task.h
-ml_task.h
-fsm_task.h
-output_task.h
+  /Inc
+    lis3dh_driver.h       ✅ LIS3DH accelerometer driver header
+    main.h                ✅ Main application header
+    stm32h5xx_hal_conf.h  ✅ HAL configuration
+    stm32h5xx_it.h        ✅ Interrupt handlers
+  /Src
+    lis3dh_driver.c       ✅ LIS3DH driver implementation
+    main.c                ✅ Main application
+    stm32h5xx_hal_msp.c   ✅ HAL MSP initialization
+    stm32h5xx_it.c        ✅ Interrupt service routines
+    system_stm32h5xx.c    ✅ System initialization
 
-/docs
-architecture.md
-fsm.md
-timing.md
+/Drivers
+  /CMSIS                  ✅ ARM CMSIS libraries
+  /STM32H5xx_HAL_Driver   ✅ STM32 HAL drivers (GPIO, SPI, DMA, etc.)
 
-README.md
+/cmake                    ✅ CMake build configuration
+/build                    ✅ Build artifacts (excluded from git)
+
+CMakeLists.txt            ✅ Root CMake configuration
+smart_safe.ioc            ✅ STM32CubeMX project file
+README.md                 ✅ This file
+LICENSE                   ✅ MIT License
+
+Future additions:
+  /Core/Src
+    sensor_task.c         ⏳ Sensor acquisition task
+    ml_task.c             ⏳ ML processing task
+    fsm_task.c            ⏳ State machine task
+    output_task.c         ⏳ Output control task
+  /docs
+    architecture.md       ⏳ Architecture documentation
+    fsm.md                ⏳ FSM design
+    timing.md             ⏳ Timing analysis
+```
 
 
 ---
@@ -162,15 +206,32 @@ README.md
 
 ---
 
-## ⏱️ System Bring-Up Configuration
+## ⏱️ System Configuration
 
-- External HSE crystal (board-mounted)
-- System clock configured to 250 MHz via PLL
-- Clock tree validated using STM32CubeMX
+**Clock Configuration:**
+- External HSE crystal: 8 MHz (board-mounted)
+- System clock (SYSCLK): 250 MHz via PLL
+- AHB clock: 250 MHz
+- APB1/APB2/APB3: Configured via CubeMX
+- Clock tree validated and stable
 
-- I2C1 @ 400 kHz (OLED display, ToF sensor)
-- SPI1 (Mode 3, 8-bit) for accelerometer
-- Manual GPIO-based chip select
+**Peripheral Configuration:**
+- **SPI1** (Accelerometer):
+  - Mode: Full-Duplex Master
+  - Clock polarity: High (CPOL=1)
+  - Clock phase: 2nd Edge (CPHA=1)
+  - Data size: 8-bit
+  - First bit: MSB first
+  - CS: PA4 (GPIO manual control)
+  - SCK: PA5, MISO: PA6, MOSI: PA7
+
+- **I2C1** (Future - Display/Sensors):
+  - Speed: 400 kHz (Fast Mode)
+  - Configuration ready, not yet used
+
+- **GPIO**:
+  - PA4: LIS3DH_CS (Output, initially HIGH)
+  - Additional GPIOs configured for LEDs/buttons (standard NUCLEO)
 
 ---
 
