@@ -21,6 +21,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "lis3dh_driver.h"
 
 /* USER CODE END Includes */
 
@@ -44,7 +45,8 @@
 SPI_HandleTypeDef hspi1;
 
 /* USER CODE BEGIN PV */
-
+/* LIS3DH driver handle for accelerometer */
+LIS3DH_Handle_t lis3dh_handle;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -92,6 +94,62 @@ int main(void)
   MX_SPI1_Init();
   /* USER CODE BEGIN 2 */
 
+  /* ============================================================
+   * LIS3DH Accelerometer Driver Initialization (HARDWARE MODE)
+   * ============================================================
+   * This section initializes the LIS3DH 3-axis accelerometer
+   * for real-time vibration/motion monitoring.
+   * 
+   * Configuration:
+   *   - Sampling Rate: 100Hz (10ms between samples)
+   *   - Measurement Range: ±2g (high sensitivity)
+   *   - Resolution: 12-bit (high precision mode)
+   *   - Interface: SPI Mode 3 (CPOL=1, CPHA=1)
+   * 
+   * Physical Wiring (NUCLEO-H563ZI to LIS3DH):
+   *   Pin Name    | MCU Pin | LIS3DH Pin | Function
+   *   ------------|---------|------------|------------------
+   *   SPI1_SCK    | PA5     | SCL        | SPI Clock
+   *   SPI1_MISO   | PA6     | SDO        | Master In Slave Out
+   *   SPI1_MOSI   | PA7     | SDA        | Master Out Slave In
+   *   GPIO        | PA4     | CS         | Chip Select (active low)
+   *   Power       | 3V3     | VDD        | Power Supply
+   *   Ground      | GND     | GND        | Ground
+   * 
+   * Note: The LIS3DH will be verified via WHO_AM_I register
+   *       during initialization. If connection fails, the
+   *       system will enter Error_Handler().
+   * ============================================================
+   */
+
+  /* Configure LIS3DH driver with optimal settings for condition monitoring */
+  LIS3DH_Config_t lis3dh_config = {
+      .mode = LIS3DH_MODE_HARDWARE,        /* Use real hardware via SPI */
+      .odr = LIS3DH_ODR_100HZ,             /* 100 samples/sec for vibration detection */
+      .range = LIS3DH_RANGE_2G,            /* ±2g: most sensitive, suitable for small vibrations */
+      .op_mode = LIS3DH_OPMODE_HIGH_RES,   /* 12-bit resolution for precise measurements */
+      .hspi = &hspi1,                      /* SPI1 peripheral handle */
+      .cs_port = LIS3DH_CS_GPIO_Port,      /* Chip select GPIO port (GPIOA) */
+      .cs_pin = LIS3DH_CS_Pin              /* Chip select pin (PA4) */
+  };
+
+  /* Initialize the LIS3DH driver
+   * This will:
+   *   1. Verify WHO_AM_I register (0x33)
+   *   2. Configure CTRL_REG1 (ODR, enable axes)
+   *   3. Configure CTRL_REG4 (range, resolution)
+   *   4. Calculate sensitivity for raw->mg conversion
+   */
+  if (!LIS3DH_Init(&lis3dh_handle, &lis3dh_config)) {
+      /* Initialization failed - possible causes:
+       * - Sensor not connected
+       * - Wrong wiring
+       * - SPI communication error
+       * - WHO_AM_I mismatch
+       */
+      Error_Handler();
+  }
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -101,6 +159,45 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+
+    /* ========================================
+     * Read Acceleration Data
+     * ========================================
+     * Reads 3-axis acceleration in milli-g units.
+     * 
+     * Expected values when sensor is at rest:
+     *   - X axis: ~0 mg (horizontal plane)
+     *   - Y axis: ~0 mg (horizontal plane)  
+     *   - Z axis: ~±1000 mg (gravity = 1g)
+     * 
+     * Use debugger to inspect acc_data:
+     *   - Set breakpoint here
+     *   - Watch: acc_data.x, acc_data.y, acc_data.z
+     * 
+     * In production with FreeRTOS:
+     *   - Data will be sent to processing task via queue
+     *   - ML task will detect anomalies
+     *   - Decision FSM will trigger alerts/actions
+     * ========================================
+     */
+    LIS3DH_AccData_t acc_data;
+    if (LIS3DH_ReadAcceleration(&lis3dh_handle, &acc_data)) {
+        /* Data successfully read from sensor
+         * Values are now in acc_data.x, acc_data.y, acc_data.z (in mg)
+         * 
+         * TODO (when adding FreeRTOS):
+         * xQueueSend(sensor_queue, &acc_data, 0);
+         */
+    } else {
+        /* Read failed - sensor may be disconnected or SPI error occurred */
+    }
+
+    /* Wait 10ms before next reading (matches 100Hz sampling rate)
+     * Note: In production, this will be handled by RTOS task scheduling
+     *       with proper timer-based sampling instead of polling.
+     */
+    HAL_Delay(10);
+
   }
   /* USER CODE END 3 */
 }

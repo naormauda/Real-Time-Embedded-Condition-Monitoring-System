@@ -4,5 +4,6 @@
     "cmake.configureArgs": [
         "-DCMAKE_TOOLCHAIN_FILE=D:/project_real_time_embedded/smart_safe/toolchain-arm-none-eabi.cmake"
     ],
-    "cmake.configureOnOpen": true
+    "cmake.configureOnOpen": true,
+    "C_Cpp.dimInactiveRegions": false
 }
