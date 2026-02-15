@@ -21,7 +21,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "lis3dh_driver.h"
+/* Direct SPI test (no driver) */
 
 /* USER CODE END Includes */
 
@@ -44,14 +44,16 @@
 
 SPI_HandleTypeDef hspi1;
 
+UART_HandleTypeDef huart3;
+
 /* USER CODE BEGIN PV */
-/* LIS3DH driver handle for accelerometer */
-LIS3DH_Handle_t lis3dh_handle;
+/* No driver handle needed for direct SPI test */
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
+static void MX_USART3_UART_Init(void);
 static void MX_SPI1_Init(void);
 /* USER CODE BEGIN PFP */
 
@@ -59,6 +61,32 @@ static void MX_SPI1_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
+#include <stdio.h>
+#include <stdbool.h>
+#include "lis3dsh_driver.h"
+
+#define VERBOSE_LOGGING       0   // 0=MG only, 1=MG+RAW
+#define LIS3DSH_CALIB_SAMPLES 32
+#define LIS3DSH_EMA_SHIFT     2
+
+static LIS3DSH_Handle_t lis3dsh;
+static const LIS3DSH_Config_t lis3dsh_config = {
+  .hspi = &hspi1,
+  .cs_port = LIS3DSH_CS_GPIO_Port,
+  .cs_pin = LIS3DSH_CS_Pin,
+  .odr = LIS3DSH_ODR_100_HZ,
+  .full_scale = LIS3DSH_FS_2G,
+  .calib_samples = LIS3DSH_CALIB_SAMPLES,
+  .ema_shift = LIS3DSH_EMA_SHIFT,
+};
+
+int _write(int file, char *ptr, int len)
+{
+  (void)file;
+  HAL_UART_Transmit(&huart3, (uint8_t*)ptr, len, HAL_MAX_DELAY);
+  return len;
+}
 
 /* USER CODE END 0 */
 
@@ -91,65 +119,25 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_USART3_UART_Init();
   MX_SPI1_Init();
   /* USER CODE BEGIN 2 */
 
-  /* ============================================================
-   * LIS3DH Accelerometer Driver Initialization (HARDWARE MODE)
-   * ============================================================
-   * This section initializes the LIS3DH 3-axis accelerometer
-   * for real-time vibration/motion monitoring.
-   * 
-   * Configuration:
-   *   - Sampling Rate: 100Hz (10ms between samples)
-   *   - Measurement Range: ±2g (high sensitivity)
-   *   - Resolution: 12-bit (high precision mode)
-   *   - Interface: SPI Mode 3 (CPOL=1, CPHA=1)
-   * 
-   * Physical Wiring (NUCLEO-H563ZI to LIS3DH):
-   *   Pin Name    | MCU Pin | LIS3DH Pin | Function
-   *   ------------|---------|------------|------------------
-   *   SPI1_SCK    | PA5     | SCL        | SPI Clock
-   *   SPI1_MISO   | PA6     | SDO        | Master In Slave Out
-   *   SPI1_MOSI   | PA7     | SDA        | Master Out Slave In
-   *   GPIO        | PA4     | CS         | Chip Select (active low)
-   *   Power       | 3V3     | VDD        | Power Supply
-   *   Ground      | GND     | GND        | Ground
-   * 
-   * Note: The LIS3DH will be verified via WHO_AM_I register
-   *       during initialization. If connection fails, the
-   *       system will enter Error_Handler().
-   * ============================================================
-   */
+  /* UART + SPI sanity check before moving to full driver */
+  printf("UART OK: starting LIS3DSH SPI test\r\n");
 
-  /* Configure LIS3DH driver with optimal settings for condition monitoring */
-  LIS3DH_Config_t lis3dh_config = {
-      .mode = LIS3DH_MODE_HARDWARE,        /* Use real hardware via SPI */
-      .odr = LIS3DH_ODR_100HZ,             /* 100 samples/sec for vibration detection */
-      .range = LIS3DH_RANGE_2G,            /* ±2g: most sensitive, suitable for small vibrations */
-      .op_mode = LIS3DH_OPMODE_HIGH_RES,   /* 12-bit resolution for precise measurements */
-      .hspi = &hspi1,                      /* SPI1 peripheral handle */
-      .cs_port = LIS3DH_CS_GPIO_Port,      /* Chip select GPIO port (GPIOA) */
-      .cs_pin = LIS3DH_CS_Pin              /* Chip select pin (PA4) */
-  };
-
-  /* Initialize the LIS3DH driver
-   * This will:
-   *   1. Verify WHO_AM_I register (0x33)
-   *   2. Configure CTRL_REG1 (ODR, enable axes)
-   *   3. Configure CTRL_REG4 (range, resolution)
-   *   4. Calculate sensitivity for raw->mg conversion
-   */
-  if (!LIS3DH_Init(&lis3dh_handle, &lis3dh_config)) {
-      /* Initialization failed - possible causes:
-       * - Sensor not connected
-       * - Wrong wiring
-       * - SPI communication error
-       * - WHO_AM_I mismatch
-       */
-      Error_Handler();
+  bool lis3dsh_ok = LIS3DSH_Init(&lis3dsh, &lis3dsh_config);
+  if (lis3dsh_ok) {
+    printf("LIS3DSH init OK\r\n");
+    uint8_t who_am_i = 0;
+    if (LIS3DSH_ReadWhoAmI(&lis3dsh, &who_am_i)) {
+      printf("SPI WHO_AM_I=0x%02X\r\n", who_am_i);
+    } else {
+      printf("SPI WHO_AM_I read failed\r\n");
+    }
+  } else {
+    printf("LIS3DSH init failed\r\n");
   }
-
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -169,34 +157,57 @@ int main(void)
      *   - X axis: ~0 mg (horizontal plane)
      *   - Y axis: ~0 mg (horizontal plane)  
      *   - Z axis: ~±1000 mg (gravity = 1g)
-     * 
-     * Use debugger to inspect acc_data:
-     *   - Set breakpoint here
-     *   - Watch: acc_data.x, acc_data.y, acc_data.z
-     * 
-     * In production with FreeRTOS:
-     *   - Data will be sent to processing task via queue
-     *   - ML task will detect anomalies
-     *   - Decision FSM will trigger alerts/actions
      * ========================================
      */
-    LIS3DH_AccData_t acc_data;
-    if (LIS3DH_ReadAcceleration(&lis3dh_handle, &acc_data)) {
-        /* Data successfully read from sensor
-         * Values are now in acc_data.x, acc_data.y, acc_data.z (in mg)
-         * 
-         * TODO (when adding FreeRTOS):
-         * xQueueSend(sensor_queue, &acc_data, 0);
-         */
-    } else {
-        /* Read failed - sensor may be disconnected or SPI error occurred */
+    static bool discard_first = true;
+    static bool was_calibrated = false;
+    static uint32_t calib_log = 0;
+
+    for (volatile int i = 0; i < 100; i++) {
     }
 
-    /* Wait 10ms before next reading (matches 100Hz sampling rate)
-     * Note: In production, this will be handled by RTOS task scheduling
-     *       with proper timer-based sampling instead of polling.
-     */
-    HAL_Delay(10);
+    if (!lis3dsh_ok) {
+      HAL_Delay(500);
+      continue;
+    }
+
+    int16_t x = 0;
+    int16_t y = 0;
+    int16_t z = 0;
+    if (LIS3DSH_ReadRaw(&lis3dsh, &x, &y, &z)) {
+      if (discard_first) {
+        discard_first = false;
+      } else {
+        int32_t x_mg = 0;
+        int32_t y_mg = 0;
+        int32_t z_mg = 0;
+        if (LIS3DSH_ProcessSample(&lis3dsh, x, y, z, &x_mg, &y_mg, &z_mg)) {
+#if VERBOSE_LOGGING
+          printf("RAW XYZ: %d %d %d | MG XYZ: %ld %ld %ld\r\n",
+                 x, y, z, (long)x_mg, (long)y_mg, (long)z_mg);
+#else
+          printf("MG: %ld %ld %ld\r\n", (long)x_mg, (long)y_mg, (long)z_mg);
+#endif
+          was_calibrated = true;
+        } else {
+          bool calibrated = false;
+          uint32_t count = 0;
+          uint32_t total = 0;
+          LIS3DSH_GetCalibrationStatus(&lis3dsh, &calibrated, &count, &total);
+          calib_log++;
+          if (calibrated && !was_calibrated) {
+            printf("Calib done\r\n");
+            was_calibrated = true;
+          } else if (!calibrated && (calib_log % 8 == 0)) {
+            printf("Calibrating: %lu/%lu\r\n", (unsigned long)count, (unsigned long)total);
+          }
+        }
+      }
+    } else {
+      printf("RAW XYZ read failed\r\n");
+    }
+
+    HAL_Delay(500);
 
   }
   /* USER CODE END 3 */
@@ -213,7 +224,7 @@ void SystemClock_Config(void)
 
   /** Configure the main internal regulator output voltage
   */
-  __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE0);
+  __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE3);
 
   while(!__HAL_PWR_GET_FLAG(PWR_FLAG_VOSRDY)) {}
 
@@ -229,7 +240,7 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.PLL.PLLP = 2;
   RCC_OscInitStruct.PLL.PLLQ = 3;
   RCC_OscInitStruct.PLL.PLLR = 2;
-  RCC_OscInitStruct.PLL.PLLRGE = RCC_PLL1_VCIRANGE_2;
+  RCC_OscInitStruct.PLL.PLLRGE = RCC_PLL1_VCIRANGE_0;
   RCC_OscInitStruct.PLL.PLLVCOSEL = RCC_PLL1_VCORANGE_WIDE;
   RCC_OscInitStruct.PLL.PLLFRACN = 0;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
@@ -248,7 +259,7 @@ void SystemClock_Config(void)
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
   RCC_ClkInitStruct.APB3CLKDivider = RCC_HCLK_DIV1;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_5) != HAL_OK)
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_4) != HAL_OK)
   {
     Error_Handler();
   }
@@ -281,7 +292,7 @@ static void MX_SPI1_Init(void)
   hspi1.Init.CLKPolarity = SPI_POLARITY_HIGH;
   hspi1.Init.CLKPhase = SPI_PHASE_2EDGE;
   hspi1.Init.NSS = SPI_NSS_SOFT;
-  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_32;
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_256;
   hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
@@ -307,6 +318,54 @@ static void MX_SPI1_Init(void)
 }
 
 /**
+  * @brief USART3 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART3_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART3_Init 0 */
+
+  /* USER CODE END USART3_Init 0 */
+
+  /* USER CODE BEGIN USART3_Init 1 */
+
+  /* USER CODE END USART3_Init 1 */
+  huart3.Instance = USART3;
+  huart3.Init.BaudRate = 115200;
+  huart3.Init.WordLength = UART_WORDLENGTH_8B;
+  huart3.Init.StopBits = UART_STOPBITS_1;
+  huart3.Init.Parity = UART_PARITY_NONE;
+  huart3.Init.Mode = UART_MODE_TX_RX;
+  huart3.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart3.Init.OverSampling = UART_OVERSAMPLING_16;
+  huart3.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
+  huart3.Init.ClockPrescaler = UART_PRESCALER_DIV1;
+  huart3.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+  if (HAL_UART_Init(&huart3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_UARTEx_SetTxFifoThreshold(&huart3, UART_TXFIFO_THRESHOLD_1_8) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_UARTEx_SetRxFifoThreshold(&huart3, UART_RXFIFO_THRESHOLD_1_8) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_UARTEx_DisableFifoMode(&huart3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART3_Init 2 */
+
+  /* USER CODE END USART3_Init 2 */
+
+}
+
+/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -321,16 +380,19 @@ static void MX_GPIO_Init(void)
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOH_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOD_CLK_ENABLE();
+  __HAL_RCC_GPIOG_CLK_ENABLE();
+  __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(LIS3DH_CS_GPIO_Port, LIS3DH_CS_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(LIS3DSH_CS_GPIO_Port, LIS3DSH_CS_Pin, GPIO_PIN_SET);
 
-  /*Configure GPIO pin : LIS3DH_CS_Pin */
-  GPIO_InitStruct.Pin = LIS3DH_CS_Pin;
+  /*Configure GPIO pin : LIS3DSH_CS_Pin */
+  GPIO_InitStruct.Pin = LIS3DSH_CS_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
-  HAL_GPIO_Init(LIS3DH_CS_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(LIS3DSH_CS_GPIO_Port, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 

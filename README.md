@@ -106,12 +106,11 @@ deterministic behavior and maintainability.
 ## 📦 Hardware Components
 
 **Implemented:**
-- ✅ **LIS3DH** - 3-axis accelerometer (SPI1)
+- ✅ **LIS3DSH** - 3-axis accelerometer (SPI1)
   - Connected via SPI (CPOL=1, CPHA=1, Mode 3)
-  - Chip Select: PA4 (GPIO manual control)
-  - Configurable ODR: 1Hz - 400Hz
-  - Configurable range: ±2g / ±4g / ±8g / ±16g
-  - 12-bit high resolution mode
+  - Chip Select: PD14 (GPIO manual control)
+  - WHO_AM_I: 0x3F
+  - Note: Module silkscreen may show LIS3DH, but measured ID is LIS3DSH
 
 **Planned:**
 - ⏳ Motion / proximity sensor (event-driven)
@@ -133,15 +132,13 @@ deterministic behavior and maintainability.
 
 **Completed:**
 - ✅ Clock tree configuration (250 MHz via PLL)
-- ✅ Peripheral configuration (SPI1, I2C1, GPIO)
+- ✅ Peripheral configuration (SPI1, GPIO)
 - ✅ CubeMX code generation
-- ✅ LIS3DH accelerometer driver (full implementation)
-  - Hardware abstraction layer with SPI communication
-  - Support for all ODR rates (1Hz - 400Hz)
-  - Support for all ranges (±2g, ±4g, ±8g, ±16g)
-  - Support for all operating modes (low power, normal, high resolution)
-  - Simulation mode for development without hardware
-  - Data conversion (raw to milli-g)
+- ✅ LIS3DSH accelerometer SPI bring-up
+  - WHO_AM_I verification (0x3F)
+  - Basic initialization (CTRL_REG4 = 0x67)
+  - Raw data read + mg conversion
+  - Calibration + EMA smoothing
 
 **In Progress:**
 - 🔄 Driver testing and validation
@@ -159,12 +156,12 @@ deterministic behavior and maintainability.
 ```
 /Core
   /Inc
-    lis3dh_driver.h       ✅ LIS3DH accelerometer driver header
+    lis3dsh_driver.h      ✅ LIS3DSH accelerometer driver header
     main.h                ✅ Main application header
     stm32h5xx_hal_conf.h  ✅ HAL configuration
     stm32h5xx_it.h        ✅ Interrupt handlers
   /Src
-    lis3dh_driver.c       ✅ LIS3DH driver implementation
+    lis3dsh_driver.c      ✅ LIS3DSH driver implementation
     main.c                ✅ Main application
     stm32h5xx_hal_msp.c   ✅ HAL MSP initialization
     stm32h5xx_it.c        ✅ Interrupt service routines
@@ -222,15 +219,11 @@ Future additions:
   - Clock phase: 2nd Edge (CPHA=1)
   - Data size: 8-bit
   - First bit: MSB first
-  - CS: PA4 (GPIO manual control)
-  - SCK: PA5, MISO: PA6, MOSI: PA7
-
-- **I2C1** (Future - Display/Sensors):
-  - Speed: 400 kHz (Fast Mode)
-  - Configuration ready, not yet used
+  - CS: PD14 (GPIO manual control)
+  - SCK: PA5, MISO: PG9, MOSI: PB5
 
 - **GPIO**:
-  - PA4: LIS3DH_CS (Output, initially HIGH)
+  - PD14: LIS3DSH_CS (Output, initially HIGH)
   - Additional GPIOs configured for LEDs/buttons (standard NUCLEO)
 
 ---
