@@ -2,5 +2,6 @@ D:/project_real_time_embedded/smart_safe/build/CMakeFiles/smart_safe.dir
 D:/project_real_time_embedded/smart_safe/build/CMakeFiles/edit_cache.dir
 D:/project_real_time_embedded/smart_safe/build/CMakeFiles/rebuild_cache.dir
 D:/project_real_time_embedded/smart_safe/build/cmake/stm32cubemx/CMakeFiles/STM32_Drivers.dir
+D:/project_real_time_embedded/smart_safe/build/cmake/stm32cubemx/CMakeFiles/RTOS2.dir
 D:/project_real_time_embedded/smart_safe/build/cmake/stm32cubemx/CMakeFiles/edit_cache.dir
 D:/project_real_time_embedded/smart_safe/build/cmake/stm32cubemx/CMakeFiles/rebuild_cache.dir

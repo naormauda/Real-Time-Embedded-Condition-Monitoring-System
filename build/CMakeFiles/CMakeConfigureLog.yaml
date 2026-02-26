@@ -3593,8 +3593,8 @@ events:
     checks:
       - "Detecting C compiler ABI info"
     directories:
-      source: "D:/project_real_time_embedded/smart_safe/build/CMakeFiles/CMakeScratch/TryCompile-4as9zd"
-      binary: "D:/project_real_time_embedded/smart_safe/build/CMakeFiles/CMakeScratch/TryCompile-4as9zd"
+      source: "D:/project_real_time_embedded/smart_safe/build/CMakeFiles/CMakeScratch/TryCompile-wvcx3j"
+      binary: "D:/project_real_time_embedded/smart_safe/build/CMakeFiles/CMakeScratch/TryCompile-wvcx3j"
     cmakeVariables:
       CMAKE_C_FLAGS: "-mcpu=cortex-m33 -mthumb -mfpu=fpv5-sp-d16 -mfloat-abi=hard -ffunction-sections -fdata-sections -Wall"
       CMAKE_C_FLAGS_DEBUG: "-g"
@@ -3603,10 +3603,10 @@ events:
       variable: "CMAKE_C_ABI_COMPILED"
       cached: true
       stdout: |
-        Change Dir: 'D:/project_real_time_embedded/smart_safe/build/CMakeFiles/CMakeScratch/TryCompile-4as9zd'
+        Change Dir: 'D:/project_real_time_embedded/smart_safe/build/CMakeFiles/CMakeScratch/TryCompile-wvcx3j'
         
-        Run Build Command(s): D:/bin/ninja.exe -v cmTC_16ebc
-        [1/2] D:\\bin\\arm-none-eabi-gcc.exe   -mcpu=cortex-m33 -mthumb -mfpu=fpv5-sp-d16 -mfloat-abi=hard -ffunction-sections -fdata-sections -Wall  -std=gnu11   -v -o CMakeFiles/cmTC_16ebc.dir/CMakeCCompilerABI.c.obj -c D:/share/cmake-4.2/Modules/CMakeCCompilerABI.c
+        Run Build Command(s): D:/bin/ninja.exe -v cmTC_f112d
+        [1/2] D:\\bin\\arm-none-eabi-gcc.exe   -mcpu=cortex-m33 -mthumb -mfpu=fpv5-sp-d16 -mfloat-abi=hard -ffunction-sections -fdata-sections -Wall  -std=gnu11   -v -o CMakeFiles/cmTC_f112d.dir/CMakeCCompilerABI.c.obj -c D:/share/cmake-4.2/Modules/CMakeCCompilerABI.c
         Using built-in specs.
         COLLECT_GCC=D:\\bin\\arm-none-eabi-gcc.exe
         Target: arm-none-eabi
@@ -3614,8 +3614,8 @@ events:
         Thread model: single
         Supported LTO compression algorithms: zlib
         gcc version 15.2.1 20251203 (Arm GNU Toolchain 15.2.Rel1 (Build arm-15.86)) 
-        COLLECT_GCC_OPTIONS='-mcpu=cortex-m33' '-mthumb' '-mfpu=fpv5-sp-d16' '-mfloat-abi=hard' '-ffunction-sections' '-fdata-sections' '-Wall' '-std=gnu11' '-v' '-o' 'CMakeFiles/cmTC_16ebc.dir/CMakeCCompilerABI.c.obj' '-c' '-mlibarch=armv8-m.main+dsp+fp' '-march=armv8-m.main+dsp+fp' '-dumpdir' 'CMakeFiles/cmTC_16ebc.dir/'
-         D:/bin/../libexec/gcc/arm-none-eabi/15.2.1/cc1.exe -quiet -v -imultilib thumb/v8-m.main+fp/hard -iprefix D:/bin/../lib/gcc/arm-none-eabi/15.2.1/ -isysroot D:/bin/../arm-none-eabi -D__USES_INITFINI__ D:/share/cmake-4.2/Modules/CMakeCCompilerABI.c -quiet -dumpdir CMakeFiles/cmTC_16ebc.dir/ -dumpbase CMakeCCompilerABI.c.c -dumpbase-ext .c -mcpu=cortex-m33 -mthumb -mfpu=fpv5-sp-d16 -mfloat-abi=hard -mlibarch=armv8-m.main+dsp+fp -march=armv8-m.main+dsp+fp -Wall -std=gnu11 -version -ffunction-sections -fdata-sections -o C:\\Users\\PC\\AppData\\Local\\Temp\\ccU4NRLD.s
+        COLLECT_GCC_OPTIONS='-mcpu=cortex-m33' '-mthumb' '-mfpu=fpv5-sp-d16' '-mfloat-abi=hard' '-ffunction-sections' '-fdata-sections' '-Wall' '-std=gnu11' '-v' '-o' 'CMakeFiles/cmTC_f112d.dir/CMakeCCompilerABI.c.obj' '-c' '-mlibarch=armv8-m.main+dsp+fp' '-march=armv8-m.main+dsp+fp' '-dumpdir' 'CMakeFiles/cmTC_f112d.dir/'
+         D:/bin/../libexec/gcc/arm-none-eabi/15.2.1/cc1.exe -quiet -v -imultilib thumb/v8-m.main+fp/hard -iprefix D:/bin/../lib/gcc/arm-none-eabi/15.2.1/ -isysroot D:/bin/../arm-none-eabi -D__USES_INITFINI__ D:/share/cmake-4.2/Modules/CMakeCCompilerABI.c -quiet -dumpdir CMakeFiles/cmTC_f112d.dir/ -dumpbase CMakeCCompilerABI.c.c -dumpbase-ext .c -mcpu=cortex-m33 -mthumb -mfpu=fpv5-sp-d16 -mfloat-abi=hard -mlibarch=armv8-m.main+dsp+fp -march=armv8-m.main+dsp+fp -Wall -std=gnu11 -version -ffunction-sections -fdata-sections -o C:\\Users\\PC\\AppData\\Local\\Temp\\ccK4IbGN.s
         GNU C11 (Arm GNU Toolchain 15.2.Rel1 (Build arm-15.86)) version 15.2.1 20251203 (arm-none-eabi)
         	compiled by GNU C version 13-win32, GMP version 6.2.1, MPFR version 3.1.6, MPC version 1.0.3, isl version isl-0.15-1-g835ea3a-GMP
         
@@ -3632,13 +3632,13 @@ events:
          D:/bin/../lib/gcc/arm-none-eabi/15.2.1/../../../../arm-none-eabi/include
         End of search list.
         Compiler executable checksum: 06ab445c59ba8f89bbf09b9a069e4cf7
-        COLLECT_GCC_OPTIONS='-mcpu=cortex-m33' '-mthumb' '-mfpu=fpv5-sp-d16' '-mfloat-abi=hard' '-ffunction-sections' '-fdata-sections' '-Wall' '-std=gnu11' '-v' '-o' 'CMakeFiles/cmTC_16ebc.dir/CMakeCCompilerABI.c.obj' '-c' '-mlibarch=armv8-m.main+dsp+fp' '-march=armv8-m.main+dsp+fp' '-dumpdir' 'CMakeFiles/cmTC_16ebc.dir/'
-         D:/bin/../lib/gcc/arm-none-eabi/15.2.1/../../../../arm-none-eabi/bin/as.exe -v -march=armv8-m.main+dsp+fp -mfloat-abi=hard -mfpu=fpv5-sp-d16 -meabi=5 -o CMakeFiles/cmTC_16ebc.dir/CMakeCCompilerABI.c.obj C:\\Users\\PC\\AppData\\Local\\Temp\\ccU4NRLD.s
+        COLLECT_GCC_OPTIONS='-mcpu=cortex-m33' '-mthumb' '-mfpu=fpv5-sp-d16' '-mfloat-abi=hard' '-ffunction-sections' '-fdata-sections' '-Wall' '-std=gnu11' '-v' '-o' 'CMakeFiles/cmTC_f112d.dir/CMakeCCompilerABI.c.obj' '-c' '-mlibarch=armv8-m.main+dsp+fp' '-march=armv8-m.main+dsp+fp' '-dumpdir' 'CMakeFiles/cmTC_f112d.dir/'
+         D:/bin/../lib/gcc/arm-none-eabi/15.2.1/../../../../arm-none-eabi/bin/as.exe -v -march=armv8-m.main+dsp+fp -mfloat-abi=hard -mfpu=fpv5-sp-d16 -meabi=5 -o CMakeFiles/cmTC_f112d.dir/CMakeCCompilerABI.c.obj C:\\Users\\PC\\AppData\\Local\\Temp\\ccK4IbGN.s
         GNU assembler version 2.45.1 (arm-none-eabi) using BFD version (Arm GNU Toolchain 15.2.Rel1 (Build arm-15.86)) 2.45.1.20251203
         COMPILER_PATH=D:/bin/../libexec/gcc/arm-none-eabi/15.2.1/;D:/bin/../libexec/gcc/;D:/bin/../lib/gcc/arm-none-eabi/15.2.1/../../../../arm-none-eabi/bin/
         LIBRARY_PATH=D:/bin/../lib/gcc/arm-none-eabi/15.2.1/thumb/v8-m.main+fp/hard/;D:/bin/../lib/gcc/arm-none-eabi/15.2.1/../../../../arm-none-eabi/lib/thumb/v8-m.main+fp/hard/;D:/bin/../arm-none-eabi/lib/thumb/v8-m.main+fp/hard/;D:/bin/../lib/gcc/arm-none-eabi/15.2.1/;D:/bin/../lib/gcc/;D:/bin/../lib/gcc/arm-none-eabi/15.2.1/../../../../arm-none-eabi/lib/;D:/bin/../arm-none-eabi/lib/
-        COLLECT_GCC_OPTIONS='-mcpu=cortex-m33' '-mthumb' '-mfpu=fpv5-sp-d16' '-mfloat-abi=hard' '-ffunction-sections' '-fdata-sections' '-Wall' '-std=gnu11' '-v' '-o' 'CMakeFiles/cmTC_16ebc.dir/CMakeCCompilerABI.c.obj' '-c' '-mlibarch=armv8-m.main+dsp+fp' '-march=armv8-m.main+dsp+fp' '-dumpdir' 'CMakeFiles/cmTC_16ebc.dir/CMakeCCompilerABI.c.'
-        [2/2] C:\\WINDOWS\\system32\\cmd.exe /C "cd . && D:\\bin\\cmake.exe -E rm -f libcmTC_16ebc.a && D:\\bin\\arm-none-eabi-ar.exe qc libcmTC_16ebc.a  CMakeFiles/cmTC_16ebc.dir/CMakeCCompilerABI.c.obj && D:\\bin\\arm-none-eabi-ranlib.exe libcmTC_16ebc.a && cd ."
+        COLLECT_GCC_OPTIONS='-mcpu=cortex-m33' '-mthumb' '-mfpu=fpv5-sp-d16' '-mfloat-abi=hard' '-ffunction-sections' '-fdata-sections' '-Wall' '-std=gnu11' '-v' '-o' 'CMakeFiles/cmTC_f112d.dir/CMakeCCompilerABI.c.obj' '-c' '-mlibarch=armv8-m.main+dsp+fp' '-march=armv8-m.main+dsp+fp' '-dumpdir' 'CMakeFiles/cmTC_f112d.dir/CMakeCCompilerABI.c.'
+        [2/2] C:\\WINDOWS\\system32\\cmd.exe /C "cd . && D:\\bin\\cmake.exe -E rm -f libcmTC_f112d.a && D:\\bin\\arm-none-eabi-ar.exe qc libcmTC_f112d.a  CMakeFiles/cmTC_f112d.dir/CMakeCCompilerABI.c.obj && D:\\bin\\arm-none-eabi-ranlib.exe libcmTC_f112d.a && cd ."
         
       exitCode: 0
   -
@@ -3671,10 +3671,10 @@ events:
       Parsed C implicit link information:
         link line regex: [^( *|.*[/\\])(ld[0-9]*(|\\.[a-rt-z][a-z]*|\\.s[a-np-z][a-z]*|\\.so[a-z]+)|CMAKE_LINK_STARTFILE-NOTFOUND|([^/\\]+-)?ld|collect2)[^/\\]*( |$)]
         linker tool regex: [^[ 	]*(->|"|[0-9]+>[ 	-]*Build:[ 	0-9]+ ms[ 	]*)?[ 	]*(([^"]*[/\\])?(ld[0-9]*(|\\.[a-rt-z][a-z]*|\\.s[a-np-z][a-z]*|\\.so[a-z]+)))("|,| |$)]
-        ignore line: [Change Dir: 'D:/project_real_time_embedded/smart_safe/build/CMakeFiles/CMakeScratch/TryCompile-4as9zd']
+        ignore line: [Change Dir: 'D:/project_real_time_embedded/smart_safe/build/CMakeFiles/CMakeScratch/TryCompile-wvcx3j']
         ignore line: []
-        ignore line: [Run Build Command(s): D:/bin/ninja.exe -v cmTC_16ebc]
-        ignore line: [[1/2] D:\\bin\\arm-none-eabi-gcc.exe   -mcpu=cortex-m33 -mthumb -mfpu=fpv5-sp-d16 -mfloat-abi=hard -ffunction-sections -fdata-sections -Wall  -std=gnu11   -v -o CMakeFiles/cmTC_16ebc.dir/CMakeCCompilerABI.c.obj -c D:/share/cmake-4.2/Modules/CMakeCCompilerABI.c]
+        ignore line: [Run Build Command(s): D:/bin/ninja.exe -v cmTC_f112d]
+        ignore line: [[1/2] D:\\bin\\arm-none-eabi-gcc.exe   -mcpu=cortex-m33 -mthumb -mfpu=fpv5-sp-d16 -mfloat-abi=hard -ffunction-sections -fdata-sections -Wall  -std=gnu11   -v -o CMakeFiles/cmTC_f112d.dir/CMakeCCompilerABI.c.obj -c D:/share/cmake-4.2/Modules/CMakeCCompilerABI.c]
         ignore line: [Using built-in specs.]
         ignore line: [COLLECT_GCC=D:\\bin\\arm-none-eabi-gcc.exe]
         ignore line: [Target: arm-none-eabi]
@@ -3682,8 +3682,8 @@ events:
         ignore line: [Thread model: single]
         ignore line: [Supported LTO compression algorithms: zlib]
         ignore line: [gcc version 15.2.1 20251203 (Arm GNU Toolchain 15.2.Rel1 (Build arm-15.86)) ]
-        ignore line: [COLLECT_GCC_OPTIONS='-mcpu=cortex-m33' '-mthumb' '-mfpu=fpv5-sp-d16' '-mfloat-abi=hard' '-ffunction-sections' '-fdata-sections' '-Wall' '-std=gnu11' '-v' '-o' 'CMakeFiles/cmTC_16ebc.dir/CMakeCCompilerABI.c.obj' '-c' '-mlibarch=armv8-m.main+dsp+fp' '-march=armv8-m.main+dsp+fp' '-dumpdir' 'CMakeFiles/cmTC_16ebc.dir/']
-        ignore line: [ D:/bin/../libexec/gcc/arm-none-eabi/15.2.1/cc1.exe -quiet -v -imultilib thumb/v8-m.main+fp/hard -iprefix D:/bin/../lib/gcc/arm-none-eabi/15.2.1/ -isysroot D:/bin/../arm-none-eabi -D__USES_INITFINI__ D:/share/cmake-4.2/Modules/CMakeCCompilerABI.c -quiet -dumpdir CMakeFiles/cmTC_16ebc.dir/ -dumpbase CMakeCCompilerABI.c.c -dumpbase-ext .c -mcpu=cortex-m33 -mthumb -mfpu=fpv5-sp-d16 -mfloat-abi=hard -mlibarch=armv8-m.main+dsp+fp -march=armv8-m.main+dsp+fp -Wall -std=gnu11 -version -ffunction-sections -fdata-sections -o C:\\Users\\PC\\AppData\\Local\\Temp\\ccU4NRLD.s]
+        ignore line: [COLLECT_GCC_OPTIONS='-mcpu=cortex-m33' '-mthumb' '-mfpu=fpv5-sp-d16' '-mfloat-abi=hard' '-ffunction-sections' '-fdata-sections' '-Wall' '-std=gnu11' '-v' '-o' 'CMakeFiles/cmTC_f112d.dir/CMakeCCompilerABI.c.obj' '-c' '-mlibarch=armv8-m.main+dsp+fp' '-march=armv8-m.main+dsp+fp' '-dumpdir' 'CMakeFiles/cmTC_f112d.dir/']
+        ignore line: [ D:/bin/../libexec/gcc/arm-none-eabi/15.2.1/cc1.exe -quiet -v -imultilib thumb/v8-m.main+fp/hard -iprefix D:/bin/../lib/gcc/arm-none-eabi/15.2.1/ -isysroot D:/bin/../arm-none-eabi -D__USES_INITFINI__ D:/share/cmake-4.2/Modules/CMakeCCompilerABI.c -quiet -dumpdir CMakeFiles/cmTC_f112d.dir/ -dumpbase CMakeCCompilerABI.c.c -dumpbase-ext .c -mcpu=cortex-m33 -mthumb -mfpu=fpv5-sp-d16 -mfloat-abi=hard -mlibarch=armv8-m.main+dsp+fp -march=armv8-m.main+dsp+fp -Wall -std=gnu11 -version -ffunction-sections -fdata-sections -o C:\\Users\\PC\\AppData\\Local\\Temp\\ccK4IbGN.s]
         ignore line: [GNU C11 (Arm GNU Toolchain 15.2.Rel1 (Build arm-15.86)) version 15.2.1 20251203 (arm-none-eabi)]
         ignore line: [	compiled by GNU C version 13-win32  GMP version 6.2.1  MPFR version 3.1.6  MPC version 1.0.3  isl version isl-0.15-1-g835ea3a-GMP]
         ignore line: []
@@ -3700,8 +3700,8 @@ events:
         ignore line: [ D:/bin/../lib/gcc/arm-none-eabi/15.2.1/../../../../arm-none-eabi/include]
         ignore line: [End of search list.]
         ignore line: [Compiler executable checksum: 06ab445c59ba8f89bbf09b9a069e4cf7]
-        ignore line: [COLLECT_GCC_OPTIONS='-mcpu=cortex-m33' '-mthumb' '-mfpu=fpv5-sp-d16' '-mfloat-abi=hard' '-ffunction-sections' '-fdata-sections' '-Wall' '-std=gnu11' '-v' '-o' 'CMakeFiles/cmTC_16ebc.dir/CMakeCCompilerABI.c.obj' '-c' '-mlibarch=armv8-m.main+dsp+fp' '-march=armv8-m.main+dsp+fp' '-dumpdir' 'CMakeFiles/cmTC_16ebc.dir/']
-        ignore line: [ D:/bin/../lib/gcc/arm-none-eabi/15.2.1/../../../../arm-none-eabi/bin/as.exe -v -march=armv8-m.main+dsp+fp -mfloat-abi=hard -mfpu=fpv5-sp-d16 -meabi=5 -o CMakeFiles/cmTC_16ebc.dir/CMakeCCompilerABI.c.obj C:\\Users\\PC\\AppData\\Local\\Temp\\ccU4NRLD.s]
+        ignore line: [COLLECT_GCC_OPTIONS='-mcpu=cortex-m33' '-mthumb' '-mfpu=fpv5-sp-d16' '-mfloat-abi=hard' '-ffunction-sections' '-fdata-sections' '-Wall' '-std=gnu11' '-v' '-o' 'CMakeFiles/cmTC_f112d.dir/CMakeCCompilerABI.c.obj' '-c' '-mlibarch=armv8-m.main+dsp+fp' '-march=armv8-m.main+dsp+fp' '-dumpdir' 'CMakeFiles/cmTC_f112d.dir/']
+        ignore line: [ D:/bin/../lib/gcc/arm-none-eabi/15.2.1/../../../../arm-none-eabi/bin/as.exe -v -march=armv8-m.main+dsp+fp -mfloat-abi=hard -mfpu=fpv5-sp-d16 -meabi=5 -o CMakeFiles/cmTC_f112d.dir/CMakeCCompilerABI.c.obj C:\\Users\\PC\\AppData\\Local\\Temp\\ccK4IbGN.s]
         ignore line: [GNU assembler version 2.45.1 (arm-none-eabi) using BFD version (Arm GNU Toolchain 15.2.Rel1 (Build arm-15.86)) 2.45.1.20251203]
         ignore line: [COMPILER_PATH=D:/bin/../libexec/gcc/arm-none-eabi/15.2.1/]
         ignore line: [D:/bin/../libexec/gcc/]
@@ -3713,8 +3713,8 @@ events:
         ignore line: [D:/bin/../lib/gcc/]
         ignore line: [D:/bin/../lib/gcc/arm-none-eabi/15.2.1/../../../../arm-none-eabi/lib/]
         ignore line: [D:/bin/../arm-none-eabi/lib/]
-        ignore line: [COLLECT_GCC_OPTIONS='-mcpu=cortex-m33' '-mthumb' '-mfpu=fpv5-sp-d16' '-mfloat-abi=hard' '-ffunction-sections' '-fdata-sections' '-Wall' '-std=gnu11' '-v' '-o' 'CMakeFiles/cmTC_16ebc.dir/CMakeCCompilerABI.c.obj' '-c' '-mlibarch=armv8-m.main+dsp+fp' '-march=armv8-m.main+dsp+fp' '-dumpdir' 'CMakeFiles/cmTC_16ebc.dir/CMakeCCompilerABI.c.']
-        ignore line: [[2/2] C:\\WINDOWS\\system32\\cmd.exe /C "cd . && D:\\bin\\cmake.exe -E rm -f libcmTC_16ebc.a && D:\\bin\\arm-none-eabi-ar.exe qc libcmTC_16ebc.a  CMakeFiles/cmTC_16ebc.dir/CMakeCCompilerABI.c.obj && D:\\bin\\arm-none-eabi-ranlib.exe libcmTC_16ebc.a && cd ."]
+        ignore line: [COLLECT_GCC_OPTIONS='-mcpu=cortex-m33' '-mthumb' '-mfpu=fpv5-sp-d16' '-mfloat-abi=hard' '-ffunction-sections' '-fdata-sections' '-Wall' '-std=gnu11' '-v' '-o' 'CMakeFiles/cmTC_f112d.dir/CMakeCCompilerABI.c.obj' '-c' '-mlibarch=armv8-m.main+dsp+fp' '-march=armv8-m.main+dsp+fp' '-dumpdir' 'CMakeFiles/cmTC_f112d.dir/CMakeCCompilerABI.c.']
+        ignore line: [[2/2] C:\\WINDOWS\\system32\\cmd.exe /C "cd . && D:\\bin\\cmake.exe -E rm -f libcmTC_f112d.a && D:\\bin\\arm-none-eabi-ar.exe qc libcmTC_f112d.a  CMakeFiles/cmTC_f112d.dir/CMakeCCompilerABI.c.obj && D:\\bin\\arm-none-eabi-ranlib.exe libcmTC_f112d.a && cd ."]
         ignore line: []
         ignore line: []
         implicit libs: []
@@ -3732,8 +3732,8 @@ events:
     checks:
       - "Detecting CXX compiler ABI info"
     directories:
-      source: "D:/project_real_time_embedded/smart_safe/build/CMakeFiles/CMakeScratch/TryCompile-cefgqv"
-      binary: "D:/project_real_time_embedded/smart_safe/build/CMakeFiles/CMakeScratch/TryCompile-cefgqv"
+      source: "D:/project_real_time_embedded/smart_safe/build/CMakeFiles/CMakeScratch/TryCompile-n89tnj"
+      binary: "D:/project_real_time_embedded/smart_safe/build/CMakeFiles/CMakeScratch/TryCompile-n89tnj"
     cmakeVariables:
       CMAKE_CXX_FLAGS: "-mcpu=cortex-m33 -mthumb -mfpu=fpv5-sp-d16 -mfloat-abi=hard -ffunction-sections -fdata-sections -Wall"
       CMAKE_CXX_FLAGS_DEBUG: "-g"
@@ -3743,10 +3743,10 @@ events:
       variable: "CMAKE_CXX_ABI_COMPILED"
       cached: true
       stdout: |
-        Change Dir: 'D:/project_real_time_embedded/smart_safe/build/CMakeFiles/CMakeScratch/TryCompile-cefgqv'
+        Change Dir: 'D:/project_real_time_embedded/smart_safe/build/CMakeFiles/CMakeScratch/TryCompile-n89tnj'
         
-        Run Build Command(s): D:/bin/ninja.exe -v cmTC_f394c
-        [1/2] D:\\bin\\arm-none-eabi-g++.exe   -mcpu=cortex-m33 -mthumb -mfpu=fpv5-sp-d16 -mfloat-abi=hard -ffunction-sections -fdata-sections -Wall    -v -o CMakeFiles/cmTC_f394c.dir/CMakeCXXCompilerABI.cpp.obj -c D:/share/cmake-4.2/Modules/CMakeCXXCompilerABI.cpp
+        Run Build Command(s): D:/bin/ninja.exe -v cmTC_fa463
+        [1/2] D:\\bin\\arm-none-eabi-g++.exe   -mcpu=cortex-m33 -mthumb -mfpu=fpv5-sp-d16 -mfloat-abi=hard -ffunction-sections -fdata-sections -Wall    -v -o CMakeFiles/cmTC_fa463.dir/CMakeCXXCompilerABI.cpp.obj -c D:/share/cmake-4.2/Modules/CMakeCXXCompilerABI.cpp
         Using built-in specs.
         COLLECT_GCC=D:\\bin\\arm-none-eabi-g++.exe
         Target: arm-none-eabi
@@ -3754,8 +3754,8 @@ events:
         Thread model: single
         Supported LTO compression algorithms: zlib
         gcc version 15.2.1 20251203 (Arm GNU Toolchain 15.2.Rel1 (Build arm-15.86)) 
-        COLLECT_GCC_OPTIONS='-mcpu=cortex-m33' '-mthumb' '-mfpu=fpv5-sp-d16' '-mfloat-abi=hard' '-ffunction-sections' '-fdata-sections' '-Wall' '-v' '-o' 'CMakeFiles/cmTC_f394c.dir/CMakeCXXCompilerABI.cpp.obj' '-c' '-mlibarch=armv8-m.main+dsp+fp' '-march=armv8-m.main+dsp+fp' '-dumpdir' 'CMakeFiles/cmTC_f394c.dir/'
-         D:/bin/../libexec/gcc/arm-none-eabi/15.2.1/cc1plus.exe -quiet -v -imultilib thumb/v8-m.main+fp/hard -iprefix D:/bin/../lib/gcc/arm-none-eabi/15.2.1/ -isysroot D:/bin/../arm-none-eabi -D__USES_INITFINI__ D:/share/cmake-4.2/Modules/CMakeCXXCompilerABI.cpp -quiet -dumpdir CMakeFiles/cmTC_f394c.dir/ -dumpbase CMakeCXXCompilerABI.cpp.cpp -dumpbase-ext .cpp -mcpu=cortex-m33 -mthumb -mfpu=fpv5-sp-d16 -mfloat-abi=hard -mlibarch=armv8-m.main+dsp+fp -march=armv8-m.main+dsp+fp -Wall -version -ffunction-sections -fdata-sections -o C:\\Users\\PC\\AppData\\Local\\Temp\\ccZmXL4x.s
+        COLLECT_GCC_OPTIONS='-mcpu=cortex-m33' '-mthumb' '-mfpu=fpv5-sp-d16' '-mfloat-abi=hard' '-ffunction-sections' '-fdata-sections' '-Wall' '-v' '-o' 'CMakeFiles/cmTC_fa463.dir/CMakeCXXCompilerABI.cpp.obj' '-c' '-mlibarch=armv8-m.main+dsp+fp' '-march=armv8-m.main+dsp+fp' '-dumpdir' 'CMakeFiles/cmTC_fa463.dir/'
+         D:/bin/../libexec/gcc/arm-none-eabi/15.2.1/cc1plus.exe -quiet -v -imultilib thumb/v8-m.main+fp/hard -iprefix D:/bin/../lib/gcc/arm-none-eabi/15.2.1/ -isysroot D:/bin/../arm-none-eabi -D__USES_INITFINI__ D:/share/cmake-4.2/Modules/CMakeCXXCompilerABI.cpp -quiet -dumpdir CMakeFiles/cmTC_fa463.dir/ -dumpbase CMakeCXXCompilerABI.cpp.cpp -dumpbase-ext .cpp -mcpu=cortex-m33 -mthumb -mfpu=fpv5-sp-d16 -mfloat-abi=hard -mlibarch=armv8-m.main+dsp+fp -march=armv8-m.main+dsp+fp -Wall -version -ffunction-sections -fdata-sections -o C:\\Users\\PC\\AppData\\Local\\Temp\\ccvubXSI.s
         GNU C++17 (Arm GNU Toolchain 15.2.Rel1 (Build arm-15.86)) version 15.2.1 20251203 (arm-none-eabi)
         	compiled by GNU C version 13-win32, GMP version 6.2.1, MPFR version 3.1.6, MPC version 1.0.3, isl version isl-0.15-1-g835ea3a-GMP
         
@@ -3778,13 +3778,13 @@ events:
          D:/bin/../lib/gcc/arm-none-eabi/15.2.1/../../../../arm-none-eabi/include
         End of search list.
         Compiler executable checksum: aac432cb28554e085afe9b46d5a4b17f
-        COLLECT_GCC_OPTIONS='-mcpu=cortex-m33' '-mthumb' '-mfpu=fpv5-sp-d16' '-mfloat-abi=hard' '-ffunction-sections' '-fdata-sections' '-Wall' '-v' '-o' 'CMakeFiles/cmTC_f394c.dir/CMakeCXXCompilerABI.cpp.obj' '-c' '-mlibarch=armv8-m.main+dsp+fp' '-march=armv8-m.main+dsp+fp' '-dumpdir' 'CMakeFiles/cmTC_f394c.dir/'
-         D:/bin/../lib/gcc/arm-none-eabi/15.2.1/../../../../arm-none-eabi/bin/as.exe -v -march=armv8-m.main+dsp+fp -mfloat-abi=hard -mfpu=fpv5-sp-d16 -meabi=5 -o CMakeFiles/cmTC_f394c.dir/CMakeCXXCompilerABI.cpp.obj C:\\Users\\PC\\AppData\\Local\\Temp\\ccZmXL4x.s
+        COLLECT_GCC_OPTIONS='-mcpu=cortex-m33' '-mthumb' '-mfpu=fpv5-sp-d16' '-mfloat-abi=hard' '-ffunction-sections' '-fdata-sections' '-Wall' '-v' '-o' 'CMakeFiles/cmTC_fa463.dir/CMakeCXXCompilerABI.cpp.obj' '-c' '-mlibarch=armv8-m.main+dsp+fp' '-march=armv8-m.main+dsp+fp' '-dumpdir' 'CMakeFiles/cmTC_fa463.dir/'
+         D:/bin/../lib/gcc/arm-none-eabi/15.2.1/../../../../arm-none-eabi/bin/as.exe -v -march=armv8-m.main+dsp+fp -mfloat-abi=hard -mfpu=fpv5-sp-d16 -meabi=5 -o CMakeFiles/cmTC_fa463.dir/CMakeCXXCompilerABI.cpp.obj C:\\Users\\PC\\AppData\\Local\\Temp\\ccvubXSI.s
         GNU assembler version 2.45.1 (arm-none-eabi) using BFD version (Arm GNU Toolchain 15.2.Rel1 (Build arm-15.86)) 2.45.1.20251203
         COMPILER_PATH=D:/bin/../libexec/gcc/arm-none-eabi/15.2.1/;D:/bin/../libexec/gcc/;D:/bin/../lib/gcc/arm-none-eabi/15.2.1/../../../../arm-none-eabi/bin/
         LIBRARY_PATH=D:/bin/../lib/gcc/arm-none-eabi/15.2.1/thumb/v8-m.main+fp/hard/;D:/bin/../lib/gcc/arm-none-eabi/15.2.1/../../../../arm-none-eabi/lib/thumb/v8-m.main+fp/hard/;D:/bin/../arm-none-eabi/lib/thumb/v8-m.main+fp/hard/;D:/bin/../lib/gcc/arm-none-eabi/15.2.1/;D:/bin/../lib/gcc/;D:/bin/../lib/gcc/arm-none-eabi/15.2.1/../../../../arm-none-eabi/lib/;D:/bin/../arm-none-eabi/lib/
-        COLLECT_GCC_OPTIONS='-mcpu=cortex-m33' '-mthumb' '-mfpu=fpv5-sp-d16' '-mfloat-abi=hard' '-ffunction-sections' '-fdata-sections' '-Wall' '-v' '-o' 'CMakeFiles/cmTC_f394c.dir/CMakeCXXCompilerABI.cpp.obj' '-c' '-mlibarch=armv8-m.main+dsp+fp' '-march=armv8-m.main+dsp+fp' '-dumpdir' 'CMakeFiles/cmTC_f394c.dir/CMakeCXXCompilerABI.cpp.'
-        [2/2] C:\\WINDOWS\\system32\\cmd.exe /C "cd . && D:\\bin\\cmake.exe -E rm -f libcmTC_f394c.a && D:\\bin\\arm-none-eabi-ar.exe qc libcmTC_f394c.a  CMakeFiles/cmTC_f394c.dir/CMakeCXXCompilerABI.cpp.obj && D:\\bin\\arm-none-eabi-ranlib.exe libcmTC_f394c.a && cd ."
+        COLLECT_GCC_OPTIONS='-mcpu=cortex-m33' '-mthumb' '-mfpu=fpv5-sp-d16' '-mfloat-abi=hard' '-ffunction-sections' '-fdata-sections' '-Wall' '-v' '-o' 'CMakeFiles/cmTC_fa463.dir/CMakeCXXCompilerABI.cpp.obj' '-c' '-mlibarch=armv8-m.main+dsp+fp' '-march=armv8-m.main+dsp+fp' '-dumpdir' 'CMakeFiles/cmTC_fa463.dir/CMakeCXXCompilerABI.cpp.'
+        [2/2] C:\\WINDOWS\\system32\\cmd.exe /C "cd . && D:\\bin\\cmake.exe -E rm -f libcmTC_fa463.a && D:\\bin\\arm-none-eabi-ar.exe qc libcmTC_fa463.a  CMakeFiles/cmTC_fa463.dir/CMakeCXXCompilerABI.cpp.obj && D:\\bin\\arm-none-eabi-ranlib.exe libcmTC_fa463.a && cd ."
         
       exitCode: 0
   -
@@ -3823,10 +3823,10 @@ events:
       Parsed CXX implicit link information:
         link line regex: [^( *|.*[/\\])(ld[0-9]*(|\\.[a-rt-z][a-z]*|\\.s[a-np-z][a-z]*|\\.so[a-z]+)|CMAKE_LINK_STARTFILE-NOTFOUND|([^/\\]+-)?ld|collect2)[^/\\]*( |$)]
         linker tool regex: [^[ 	]*(->|"|[0-9]+>[ 	-]*Build:[ 	0-9]+ ms[ 	]*)?[ 	]*(([^"]*[/\\])?(ld[0-9]*(|\\.[a-rt-z][a-z]*|\\.s[a-np-z][a-z]*|\\.so[a-z]+)))("|,| |$)]
-        ignore line: [Change Dir: 'D:/project_real_time_embedded/smart_safe/build/CMakeFiles/CMakeScratch/TryCompile-cefgqv']
+        ignore line: [Change Dir: 'D:/project_real_time_embedded/smart_safe/build/CMakeFiles/CMakeScratch/TryCompile-n89tnj']
         ignore line: []
-        ignore line: [Run Build Command(s): D:/bin/ninja.exe -v cmTC_f394c]
-        ignore line: [[1/2] D:\\bin\\arm-none-eabi-g++.exe   -mcpu=cortex-m33 -mthumb -mfpu=fpv5-sp-d16 -mfloat-abi=hard -ffunction-sections -fdata-sections -Wall    -v -o CMakeFiles/cmTC_f394c.dir/CMakeCXXCompilerABI.cpp.obj -c D:/share/cmake-4.2/Modules/CMakeCXXCompilerABI.cpp]
+        ignore line: [Run Build Command(s): D:/bin/ninja.exe -v cmTC_fa463]
+        ignore line: [[1/2] D:\\bin\\arm-none-eabi-g++.exe   -mcpu=cortex-m33 -mthumb -mfpu=fpv5-sp-d16 -mfloat-abi=hard -ffunction-sections -fdata-sections -Wall    -v -o CMakeFiles/cmTC_fa463.dir/CMakeCXXCompilerABI.cpp.obj -c D:/share/cmake-4.2/Modules/CMakeCXXCompilerABI.cpp]
         ignore line: [Using built-in specs.]
         ignore line: [COLLECT_GCC=D:\\bin\\arm-none-eabi-g++.exe]
         ignore line: [Target: arm-none-eabi]
@@ -3834,8 +3834,8 @@ events:
         ignore line: [Thread model: single]
         ignore line: [Supported LTO compression algorithms: zlib]
         ignore line: [gcc version 15.2.1 20251203 (Arm GNU Toolchain 15.2.Rel1 (Build arm-15.86)) ]
-        ignore line: [COLLECT_GCC_OPTIONS='-mcpu=cortex-m33' '-mthumb' '-mfpu=fpv5-sp-d16' '-mfloat-abi=hard' '-ffunction-sections' '-fdata-sections' '-Wall' '-v' '-o' 'CMakeFiles/cmTC_f394c.dir/CMakeCXXCompilerABI.cpp.obj' '-c' '-mlibarch=armv8-m.main+dsp+fp' '-march=armv8-m.main+dsp+fp' '-dumpdir' 'CMakeFiles/cmTC_f394c.dir/']
-        ignore line: [ D:/bin/../libexec/gcc/arm-none-eabi/15.2.1/cc1plus.exe -quiet -v -imultilib thumb/v8-m.main+fp/hard -iprefix D:/bin/../lib/gcc/arm-none-eabi/15.2.1/ -isysroot D:/bin/../arm-none-eabi -D__USES_INITFINI__ D:/share/cmake-4.2/Modules/CMakeCXXCompilerABI.cpp -quiet -dumpdir CMakeFiles/cmTC_f394c.dir/ -dumpbase CMakeCXXCompilerABI.cpp.cpp -dumpbase-ext .cpp -mcpu=cortex-m33 -mthumb -mfpu=fpv5-sp-d16 -mfloat-abi=hard -mlibarch=armv8-m.main+dsp+fp -march=armv8-m.main+dsp+fp -Wall -version -ffunction-sections -fdata-sections -o C:\\Users\\PC\\AppData\\Local\\Temp\\ccZmXL4x.s]
+        ignore line: [COLLECT_GCC_OPTIONS='-mcpu=cortex-m33' '-mthumb' '-mfpu=fpv5-sp-d16' '-mfloat-abi=hard' '-ffunction-sections' '-fdata-sections' '-Wall' '-v' '-o' 'CMakeFiles/cmTC_fa463.dir/CMakeCXXCompilerABI.cpp.obj' '-c' '-mlibarch=armv8-m.main+dsp+fp' '-march=armv8-m.main+dsp+fp' '-dumpdir' 'CMakeFiles/cmTC_fa463.dir/']
+        ignore line: [ D:/bin/../libexec/gcc/arm-none-eabi/15.2.1/cc1plus.exe -quiet -v -imultilib thumb/v8-m.main+fp/hard -iprefix D:/bin/../lib/gcc/arm-none-eabi/15.2.1/ -isysroot D:/bin/../arm-none-eabi -D__USES_INITFINI__ D:/share/cmake-4.2/Modules/CMakeCXXCompilerABI.cpp -quiet -dumpdir CMakeFiles/cmTC_fa463.dir/ -dumpbase CMakeCXXCompilerABI.cpp.cpp -dumpbase-ext .cpp -mcpu=cortex-m33 -mthumb -mfpu=fpv5-sp-d16 -mfloat-abi=hard -mlibarch=armv8-m.main+dsp+fp -march=armv8-m.main+dsp+fp -Wall -version -ffunction-sections -fdata-sections -o C:\\Users\\PC\\AppData\\Local\\Temp\\ccvubXSI.s]
         ignore line: [GNU C++17 (Arm GNU Toolchain 15.2.Rel1 (Build arm-15.86)) version 15.2.1 20251203 (arm-none-eabi)]
         ignore line: [	compiled by GNU C version 13-win32  GMP version 6.2.1  MPFR version 3.1.6  MPC version 1.0.3  isl version isl-0.15-1-g835ea3a-GMP]
         ignore line: []
@@ -3858,8 +3858,8 @@ events:
         ignore line: [ D:/bin/../lib/gcc/arm-none-eabi/15.2.1/../../../../arm-none-eabi/include]
         ignore line: [End of search list.]
         ignore line: [Compiler executable checksum: aac432cb28554e085afe9b46d5a4b17f]
-        ignore line: [COLLECT_GCC_OPTIONS='-mcpu=cortex-m33' '-mthumb' '-mfpu=fpv5-sp-d16' '-mfloat-abi=hard' '-ffunction-sections' '-fdata-sections' '-Wall' '-v' '-o' 'CMakeFiles/cmTC_f394c.dir/CMakeCXXCompilerABI.cpp.obj' '-c' '-mlibarch=armv8-m.main+dsp+fp' '-march=armv8-m.main+dsp+fp' '-dumpdir' 'CMakeFiles/cmTC_f394c.dir/']
-        ignore line: [ D:/bin/../lib/gcc/arm-none-eabi/15.2.1/../../../../arm-none-eabi/bin/as.exe -v -march=armv8-m.main+dsp+fp -mfloat-abi=hard -mfpu=fpv5-sp-d16 -meabi=5 -o CMakeFiles/cmTC_f394c.dir/CMakeCXXCompilerABI.cpp.obj C:\\Users\\PC\\AppData\\Local\\Temp\\ccZmXL4x.s]
+        ignore line: [COLLECT_GCC_OPTIONS='-mcpu=cortex-m33' '-mthumb' '-mfpu=fpv5-sp-d16' '-mfloat-abi=hard' '-ffunction-sections' '-fdata-sections' '-Wall' '-v' '-o' 'CMakeFiles/cmTC_fa463.dir/CMakeCXXCompilerABI.cpp.obj' '-c' '-mlibarch=armv8-m.main+dsp+fp' '-march=armv8-m.main+dsp+fp' '-dumpdir' 'CMakeFiles/cmTC_fa463.dir/']
+        ignore line: [ D:/bin/../lib/gcc/arm-none-eabi/15.2.1/../../../../arm-none-eabi/bin/as.exe -v -march=armv8-m.main+dsp+fp -mfloat-abi=hard -mfpu=fpv5-sp-d16 -meabi=5 -o CMakeFiles/cmTC_fa463.dir/CMakeCXXCompilerABI.cpp.obj C:\\Users\\PC\\AppData\\Local\\Temp\\ccvubXSI.s]
         ignore line: [GNU assembler version 2.45.1 (arm-none-eabi) using BFD version (Arm GNU Toolchain 15.2.Rel1 (Build arm-15.86)) 2.45.1.20251203]
         ignore line: [COMPILER_PATH=D:/bin/../libexec/gcc/arm-none-eabi/15.2.1/]
         ignore line: [D:/bin/../libexec/gcc/]
@@ -3871,8 +3871,8 @@ events:
         ignore line: [D:/bin/../lib/gcc/]
         ignore line: [D:/bin/../lib/gcc/arm-none-eabi/15.2.1/../../../../arm-none-eabi/lib/]
         ignore line: [D:/bin/../arm-none-eabi/lib/]
-        ignore line: [COLLECT_GCC_OPTIONS='-mcpu=cortex-m33' '-mthumb' '-mfpu=fpv5-sp-d16' '-mfloat-abi=hard' '-ffunction-sections' '-fdata-sections' '-Wall' '-v' '-o' 'CMakeFiles/cmTC_f394c.dir/CMakeCXXCompilerABI.cpp.obj' '-c' '-mlibarch=armv8-m.main+dsp+fp' '-march=armv8-m.main+dsp+fp' '-dumpdir' 'CMakeFiles/cmTC_f394c.dir/CMakeCXXCompilerABI.cpp.']
-        ignore line: [[2/2] C:\\WINDOWS\\system32\\cmd.exe /C "cd . && D:\\bin\\cmake.exe -E rm -f libcmTC_f394c.a && D:\\bin\\arm-none-eabi-ar.exe qc libcmTC_f394c.a  CMakeFiles/cmTC_f394c.dir/CMakeCXXCompilerABI.cpp.obj && D:\\bin\\arm-none-eabi-ranlib.exe libcmTC_f394c.a && cd ."]
+        ignore line: [COLLECT_GCC_OPTIONS='-mcpu=cortex-m33' '-mthumb' '-mfpu=fpv5-sp-d16' '-mfloat-abi=hard' '-ffunction-sections' '-fdata-sections' '-Wall' '-v' '-o' 'CMakeFiles/cmTC_fa463.dir/CMakeCXXCompilerABI.cpp.obj' '-c' '-mlibarch=armv8-m.main+dsp+fp' '-march=armv8-m.main+dsp+fp' '-dumpdir' 'CMakeFiles/cmTC_fa463.dir/CMakeCXXCompilerABI.cpp.']
+        ignore line: [[2/2] C:\\WINDOWS\\system32\\cmd.exe /C "cd . && D:\\bin\\cmake.exe -E rm -f libcmTC_fa463.a && D:\\bin\\arm-none-eabi-ar.exe qc libcmTC_fa463.a  CMakeFiles/cmTC_fa463.dir/CMakeCXXCompilerABI.cpp.obj && D:\\bin\\arm-none-eabi-ranlib.exe libcmTC_fa463.a && cd ."]
         ignore line: []
         ignore line: []
         implicit libs: []

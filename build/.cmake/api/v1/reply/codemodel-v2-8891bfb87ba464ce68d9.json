@@ -7,7 +7,7 @@
 				{
 					"directoryIndex" : 1,
 					"id" : "stm32cubemx::@768a070a0fe75716b479",
-					"jsonFile" : "target-stm32cubemx-Debug-ba6459f3c3fa632525b2.json",
+					"jsonFile" : "target-stm32cubemx-Debug-e7085be529b4a26b4660.json",
 					"name" : "stm32cubemx",
 					"projectIndex" : 0
 				}
@@ -29,7 +29,7 @@
 					"source" : ".",
 					"targetIndexes" : 
 					[
-						1
+						2
 					]
 				},
 				{
@@ -48,7 +48,8 @@
 					"source" : "cmake/stm32cubemx",
 					"targetIndexes" : 
 					[
-						0
+						0,
+						1
 					]
 				}
 			],
@@ -69,7 +70,8 @@
 					"targetIndexes" : 
 					[
 						0,
-						1
+						1,
+						2
 					]
 				}
 			],
@@ -77,15 +79,22 @@
 			[
 				{
 					"directoryIndex" : 1,
+					"id" : "RTOS2::@768a070a0fe75716b479",
+					"jsonFile" : "target-RTOS2-Debug-68fba6bb776e6c86acc4.json",
+					"name" : "RTOS2",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 1,
 					"id" : "STM32_Drivers::@768a070a0fe75716b479",
-					"jsonFile" : "target-STM32_Drivers-Debug-d94658e62fa64b5b2103.json",
+					"jsonFile" : "target-STM32_Drivers-Debug-89af22f3d2c04fd318ee.json",
 					"name" : "STM32_Drivers",
 					"projectIndex" : 0
 				},
 				{
 					"directoryIndex" : 0,
 					"id" : "smart_safe::@6890427a1f51a3e7e1df",
-					"jsonFile" : "target-smart_safe-Debug-c5beb0e521eda53da412.json",
+					"jsonFile" : "target-smart_safe-Debug-c29072f5aa22bb25229b.json",
 					"name" : "smart_safe",
 					"projectIndex" : 0
 				}
