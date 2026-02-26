@@ -18,6 +18,7 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "cmsis_os2.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -42,6 +43,8 @@
 
 /* Private variables ---------------------------------------------------------*/
 
+I2C_HandleTypeDef hi2c1;
+
 SPI_HandleTypeDef hspi1;
 
 UART_HandleTypeDef huart3;
@@ -52,34 +55,17 @@ UART_HandleTypeDef huart3;
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
+void MX_FREERTOS_Init(void);
 static void MX_GPIO_Init(void);
 static void MX_USART3_UART_Init(void);
 static void MX_SPI1_Init(void);
+static void MX_I2C1_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
-#include <stdio.h>
-#include <stdbool.h>
-#include "lis3dsh_driver.h"
-
-#define VERBOSE_LOGGING       0   // 0=MG only, 1=MG+RAW
-#define LIS3DSH_CALIB_SAMPLES 32
-#define LIS3DSH_EMA_SHIFT     2
-
-static LIS3DSH_Handle_t lis3dsh;
-static const LIS3DSH_Config_t lis3dsh_config = {
-  .hspi = &hspi1,
-  .cs_port = LIS3DSH_CS_GPIO_Port,
-  .cs_pin = LIS3DSH_CS_Pin,
-  .odr = LIS3DSH_ODR_100_HZ,
-  .full_scale = LIS3DSH_FS_2G,
-  .calib_samples = LIS3DSH_CALIB_SAMPLES,
-  .ema_shift = LIS3DSH_EMA_SHIFT,
-};
 
 int _write(int file, char *ptr, int len)
 {
@@ -121,24 +107,19 @@ int main(void)
   MX_GPIO_Init();
   MX_USART3_UART_Init();
   MX_SPI1_Init();
+  MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
-
-  /* UART + SPI sanity check before moving to full driver */
-  printf("UART OK: starting LIS3DSH SPI test\r\n");
-
-  bool lis3dsh_ok = LIS3DSH_Init(&lis3dsh, &lis3dsh_config);
-  if (lis3dsh_ok) {
-    printf("LIS3DSH init OK\r\n");
-    uint8_t who_am_i = 0;
-    if (LIS3DSH_ReadWhoAmI(&lis3dsh, &who_am_i)) {
-      printf("SPI WHO_AM_I=0x%02X\r\n", who_am_i);
-    } else {
-      printf("SPI WHO_AM_I read failed\r\n");
-    }
-  } else {
-    printf("LIS3DSH init failed\r\n");
-  }
   /* USER CODE END 2 */
+
+  /* Init scheduler */
+  osKernelInitialize();
+  /* Call init function for freertos objects (in app_freertos.c) */
+  MX_FREERTOS_Init();
+
+  /* Start scheduler */
+  osKernelStart();
+
+  /* We should never get here as control is now taken by the scheduler */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
@@ -147,67 +128,6 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-
-    /* ========================================
-     * Read Acceleration Data
-     * ========================================
-     * Reads 3-axis acceleration in milli-g units.
-     * 
-     * Expected values when sensor is at rest:
-     *   - X axis: ~0 mg (horizontal plane)
-     *   - Y axis: ~0 mg (horizontal plane)  
-     *   - Z axis: ~±1000 mg (gravity = 1g)
-     * ========================================
-     */
-    static bool discard_first = true;
-    static bool was_calibrated = false;
-    static uint32_t calib_log = 0;
-
-    for (volatile int i = 0; i < 100; i++) {
-    }
-
-    if (!lis3dsh_ok) {
-      HAL_Delay(500);
-      continue;
-    }
-
-    int16_t x = 0;
-    int16_t y = 0;
-    int16_t z = 0;
-    if (LIS3DSH_ReadRaw(&lis3dsh, &x, &y, &z)) {
-      if (discard_first) {
-        discard_first = false;
-      } else {
-        int32_t x_mg = 0;
-        int32_t y_mg = 0;
-        int32_t z_mg = 0;
-        if (LIS3DSH_ProcessSample(&lis3dsh, x, y, z, &x_mg, &y_mg, &z_mg)) {
-#if VERBOSE_LOGGING
-          printf("RAW XYZ: %d %d %d | MG XYZ: %ld %ld %ld\r\n",
-                 x, y, z, (long)x_mg, (long)y_mg, (long)z_mg);
-#else
-          printf("MG: %ld %ld %ld\r\n", (long)x_mg, (long)y_mg, (long)z_mg);
-#endif
-          was_calibrated = true;
-        } else {
-          bool calibrated = false;
-          uint32_t count = 0;
-          uint32_t total = 0;
-          LIS3DSH_GetCalibrationStatus(&lis3dsh, &calibrated, &count, &total);
-          calib_log++;
-          if (calibrated && !was_calibrated) {
-            printf("Calib done\r\n");
-            was_calibrated = true;
-          } else if (!calibrated && (calib_log % 8 == 0)) {
-            printf("Calibrating: %lu/%lu\r\n", (unsigned long)count, (unsigned long)total);
-          }
-        }
-      }
-    } else {
-      printf("RAW XYZ read failed\r\n");
-    }
-
-    HAL_Delay(500);
 
   }
   /* USER CODE END 3 */
@@ -267,6 +187,54 @@ void SystemClock_Config(void)
   /** Configure the programming delay
   */
   __HAL_FLASH_SET_PROGRAM_DELAY(FLASH_PROGRAMMING_DELAY_2);
+}
+
+/**
+  * @brief I2C1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_I2C1_Init(void)
+{
+
+  /* USER CODE BEGIN I2C1_Init 0 */
+  /* Not yet implemented - requires CubeMX I2C1 configuration */
+  /* USER CODE END I2C1_Init 0 */
+
+  /* USER CODE BEGIN I2C1_Init 1 */
+
+  /* USER CODE END I2C1_Init 1 */
+  hi2c1.Instance = I2C1;
+  hi2c1.Init.Timing = 0x10A0A3F6;
+  hi2c1.Init.OwnAddress1 = 0;
+  hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
+  hi2c1.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
+  hi2c1.Init.OwnAddress2 = 0;
+  hi2c1.Init.OwnAddress2Masks = I2C_OA2_NOMASK;
+  hi2c1.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
+  hi2c1.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
+  if (HAL_I2C_Init(&hi2c1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure Analogue filter
+  */
+  if (HAL_I2CEx_ConfigAnalogFilter(&hi2c1, I2C_ANALOGFILTER_ENABLE) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure Digital filter
+  */
+  if (HAL_I2CEx_ConfigDigitalFilter(&hi2c1, 0) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN I2C1_Init 2 */
+
+  /* USER CODE END I2C1_Init 2 */
+
 }
 
 /**
@@ -402,6 +370,28 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 
 /* USER CODE END 4 */
+
+/**
+  * @brief  Period elapsed callback in non blocking mode
+  * @note   This function is called  when TIM1 interrupt took place, inside
+  * HAL_TIM_IRQHandler(). It makes a direct call to HAL_IncTick() to increment
+  * a global variable "uwTick" used as application time base.
+  * @param  htim : TIM handle
+  * @retval None
+  */
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+  /* USER CODE BEGIN Callback 0 */
+
+  /* USER CODE END Callback 0 */
+  if (htim->Instance == TIM1)
+  {
+    HAL_IncTick();
+  }
+  /* USER CODE BEGIN Callback 1 */
+
+  /* USER CODE END Callback 1 */
+}
 
 /**
   * @brief  This function is executed in case of error occurrence.

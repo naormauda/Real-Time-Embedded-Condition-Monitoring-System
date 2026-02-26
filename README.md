@@ -112,8 +112,13 @@ deterministic behavior and maintainability.
   - WHO_AM_I: 0x3F
   - Note: Module silkscreen may show LIS3DH, but measured ID is LIS3DSH
 
+- ✅ **VL53L1X** - Time-of-Flight distance sensor (I2C1)
+  - Address: 0x29 (7-bit)
+  - Pins: PB8 (SCL), PB9 (SDA)
+  - Mode: Long distance, 10 Hz (50 ms timing budget, 100 ms inter-measurement)
+  - Driver: Official ST VL53L1 API
+
 **Planned:**
-- ⏳ Motion / proximity sensor (event-driven)
 - ⏳ OLED display (I2C1 @ 400kHz)
 - ⏳ LEDs and buzzer for alerts
 - ⏳ Servo motor for lock demonstration
@@ -127,8 +132,8 @@ deterministic behavior and maintainability.
 
 **Current Phase**:  
 🟢 Stage 2 – Hardware Bring-Up **COMPLETED**  
-🟢 Stage 3 – Driver Development **IN PROGRESS**  
-🟡 Stage 4 – RTOS Integration (Next)
+🟢 Stage 3 – Driver Development **COMPLETED**  
+🟡 Stage 4 – RTOS Integration **IN PROGRESS**
 
 **Completed:**
 - ✅ Clock tree configuration (250 MHz via PLL)
@@ -139,10 +144,12 @@ deterministic behavior and maintainability.
   - Basic initialization (CTRL_REG4 = 0x67)
   - Raw data read + mg conversion
   - Calibration + EMA smoothing
+- ✅ VL53L1X ToF sensor I2C bring-up
+  - Full ST VL53L1 API integration
+  - Ranging at 10 Hz (long distance mode)
 
 **In Progress:**
-- 🔄 Driver testing and validation
-- 🔄 Basic sensor reading implementation
+- 🔄 RTOS task integration and pipeline tuning
 
 **Next Steps:**
 - FreeRTOS integration via CubeMX
@@ -160,8 +167,10 @@ deterministic behavior and maintainability.
     main.h                ✅ Main application header
     stm32h5xx_hal_conf.h  ✅ HAL configuration
     stm32h5xx_it.h        ✅ Interrupt handlers
+    app_freertos.h        ✅ FreeRTOS task declarations
   /Src
     lis3dsh_driver.c      ✅ LIS3DSH driver implementation
+    app_freertos.c        ✅ FreeRTOS tasks and sensor pipeline
     main.c                ✅ Main application
     stm32h5xx_hal_msp.c   ✅ HAL MSP initialization
     stm32h5xx_it.c        ✅ Interrupt service routines
@@ -170,6 +179,7 @@ deterministic behavior and maintainability.
 /Drivers
   /CMSIS                  ✅ ARM CMSIS libraries
   /STM32H5xx_HAL_Driver   ✅ STM32 HAL drivers (GPIO, SPI, DMA, etc.)
+  /VL53L1X_API             ✅ ST VL53L1X driver (core + platform)
 
 /cmake                    ✅ CMake build configuration
 /build                    ✅ Build artifacts (excluded from git)
@@ -181,7 +191,6 @@ LICENSE                   ✅ MIT License
 
 Future additions:
   /Core/Src
-    sensor_task.c         ⏳ Sensor acquisition task
     ml_task.c             ⏳ ML processing task
     fsm_task.c            ⏳ State machine task
     output_task.c         ⏳ Output control task
@@ -221,6 +230,11 @@ Future additions:
   - First bit: MSB first
   - CS: PD14 (GPIO manual control)
   - SCK: PA5, MISO: PG9, MOSI: PB5
+
+- **I2C1** (VL53L1X ToF):
+  - Speed: 400 kHz
+  - SCL: PB8, SDA: PB9
+  - 7-bit address: 0x29
 
 - **GPIO**:
   - PD14: LIS3DSH_CS (Output, initially HIGH)
