@@ -92,6 +92,34 @@ The system is structured into layered components:
 Each component has a clearly defined responsibility to ensure
 deterministic behavior and maintainability.
 
+### Implemented Task Pipeline
+
+```
+SensorTask (10ms)          DistanceTask (50ms)
+   ↓ (accel data)             ↓ (ToF distance)
+   └─→ sensorQueue             └─→ distanceQueue
+            ↓                          ↓
+            └──────→ ProcessingTask ←──┘
+                    (fuses sensors)
+                          ↓
+                    processingQueue
+                          ↓
+                     FsmTask
+                  (state machine)
+                          ↓
+                    outputQueue
+                          ↓
+                    OutputTask
+                 (execute decisions)
+```
+
+**Task Details:**
+- **SensorTask**: Reads LIS3DSH accelerometer, computes motion magnitude, calibrates baseline
+- **DistanceTask**: Reads VL53L1X ToF sensor, filters distance changes >50mm
+- **ProcessingTask**: Drains both queues, fuses motion + proximity data at 50Hz
+- **FsmTask**: Implements 3-state FSM (IDLE/ALERT/LOCK) with dual-threat detection
+- **OutputTask**: Executes state-based actions (currently serial logging, ready for actuators)
+
 ---
 
 ## ⚙️ Target Platform
@@ -133,12 +161,13 @@ deterministic behavior and maintainability.
 **Current Phase**:  
 🟢 Stage 2 – Hardware Bring-Up **COMPLETED**  
 🟢 Stage 3 – Driver Development **COMPLETED**  
-🟡 Stage 4 – RTOS Integration **IN PROGRESS**
+� Stage 4 – RTOS Integration **COMPLETED**  
+🟡 Stage 5 – ML Integration (Next)
 
 **Completed:**
 - ✅ Clock tree configuration (250 MHz via PLL)
-- ✅ Peripheral configuration (SPI1, GPIO)
-- ✅ CubeMX code generation
+- ✅ Peripheral configuration (SPI1, I2C1, GPIO)
+- ✅ CubeMX code generation with FreeRTOS
 - ✅ LIS3DSH accelerometer SPI bring-up
   - WHO_AM_I verification (0x3F)
   - Basic initialization (CTRL_REG4 = 0x67)
@@ -147,14 +176,26 @@ deterministic behavior and maintainability.
 - ✅ VL53L1X ToF sensor I2C bring-up
   - Full ST VL53L1 API integration
   - Ranging at 10 Hz (long distance mode)
+- ✅ **Multi-sensor fusion pipeline**
+  - SensorTask: Accelerometer acquisition (10Hz)
+  - DistanceTask: ToF ranging (10Hz)
+  - ProcessingTask: Dual-sensor data fusion
+  - FsmTask: 3-state decision logic (IDLE/ALERT/LOCK)
+  - OutputTask: State-based actions
+- ✅ **FSM State Machine**
+  - IDLE → ALERT: Object proximity (<500mm) OR motion (>1500mg)
+  - ALERT → LOCK: Sustained dual threat (motion + proximity)
+  - LOCK → IDLE: Auto-reset after 5s timeout
+- ✅ Queue-based inter-task communication
+- ✅ Stack monitoring and health logging
 
 **In Progress:**
-- 🔄 RTOS task integration and pipeline tuning
+- 🔄 Feature extraction for ML input
 
 **Next Steps:**
-- FreeRTOS integration via CubeMX
-- Sensor acquisition task
-- Data buffering and queue management
+- TinyML model integration (TensorFlow Lite Micro)
+- Train anomaly detection model
+- Physical actuators (LED, buzzer, servo)
 
 ---
 
@@ -168,18 +209,26 @@ deterministic behavior and maintainability.
     stm32h5xx_hal_conf.h  ✅ HAL configuration
     stm32h5xx_it.h        ✅ Interrupt handlers
     app_freertos.h        ✅ FreeRTOS task declarations
+    FreeRTOSConfig.h      ✅ FreeRTOS configuration
   /Src
     lis3dsh_driver.c      ✅ LIS3DSH driver implementation
-    app_freertos.c        ✅ FreeRTOS tasks and sensor pipeline
-    main.c                ✅ Main application
+    app_freertos.c        ✅ FreeRTOS tasks and sensor fusion pipeline
+    main.c                ✅ Main application and peripheral init
     stm32h5xx_hal_msp.c   ✅ HAL MSP initialization
     stm32h5xx_it.c        ✅ Interrupt service routines
     system_stm32h5xx.c    ✅ System initialization
 
 /Drivers
   /CMSIS                  ✅ ARM CMSIS libraries
-  /STM32H5xx_HAL_Driver   ✅ STM32 HAL drivers (GPIO, SPI, DMA, etc.)
-  /VL53L1X_API             ✅ ST VL53L1X driver (core + platform)
+  /STM32H5xx_HAL_Driver   ✅ STM32 HAL drivers (GPIO, SPI, I2C, TIM, DMA, etc.)
+  /VL53L1X_API            ✅ ST VL53L1X driver (core + platform)
+    /API
+      /core               ✅ VL53L1 core ranging functions
+      /platform           ✅ STM32 HAL I2C platform layer
+
+/Middlewares
+  /Third_Party
+    /FreeRTOS             ✅ FreeRTOS kernel and CMSIS-RTOS v2
 
 /cmake                    ✅ CMake build configuration
 /build                    ✅ Build artifacts (excluded from git)
@@ -191,9 +240,8 @@ LICENSE                   ✅ MIT License
 
 Future additions:
   /Core/Src
-    ml_task.c             ⏳ ML processing task
-    fsm_task.c            ⏳ State machine task
-    output_task.c         ⏳ Output control task
+    ml_model.c/h          ⏳ TensorFlow Lite Micro model
+    feature_extraction.c  ⏳ Signal processing for ML features
   /docs
     architecture.md       ⏳ Architecture documentation
     fsm.md                ⏳ FSM design
@@ -239,6 +287,22 @@ Future additions:
 - **GPIO**:
   - PD14: LIS3DSH_CS (Output, initially HIGH)
   - Additional GPIOs configured for LEDs/buttons (standard NUCLEO)
+
+**FreeRTOS Configuration:**
+- Kernel: FreeRTOS 10.5.1
+- API: CMSIS-RTOS v2
+- Heap: heap_4 (fragmentation-safe)
+- Tasks: 6 (Default, Sensor, Distance, Processing, FSM, Output)
+- Queues: 4 (sensor data, distance data, processing results, FSM decisions)
+- Tick rate: 1000 Hz (1ms tick)
+
+**FSM States:**
+- **IDLE**: System normal, monitoring sensors
+- **ALERT**: Single threat detected (proximity OR motion)
+  - Triggers: Distance <500mm OR Motion >1500mg
+- **LOCK**: Dual threat confirmed (proximity AND motion sustained)
+  - Triggers: Both conditions true for 2+ consecutive cycles (100ms)
+  - Auto-reset: Returns to IDLE after 5s timeout
 
 ---
 
