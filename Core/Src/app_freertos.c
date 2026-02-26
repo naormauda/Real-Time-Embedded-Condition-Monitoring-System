@@ -44,24 +44,33 @@ typedef struct {
 } SensorSample_t;
 
 typedef struct {
-  uint32_t magnitude;
-  uint32_t tick;
-} ProcessingResult_t;
-
-typedef struct {
   uint16_t distance_mm;
   uint32_t tick;
 } DistanceSample_t;
 
 typedef enum {
   FSM_DECISION_NONE = 0,
-  FSM_DECISION_ALERT = 1
+  FSM_DECISION_ALERT = 1,
+  FSM_DECISION_LOCK = 2
 } FsmDecisionType_t;
 
 typedef struct {
   FsmDecisionType_t decision;
   uint32_t tick;
 } FsmDecision_t;
+
+typedef enum {
+  FSM_STATE_IDLE = 0,
+  FSM_STATE_ALERT = 1,
+  FSM_STATE_LOCK = 2,
+  FSM_STATE_ERROR = 3
+} FsmState_t;
+
+typedef struct {
+  uint32_t motion_magnitude_mg;
+  uint16_t distance_mm;
+  uint32_t tick;
+} FusedSensorData_t;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -74,12 +83,14 @@ typedef struct {
 
 #define LIS3DSH_CALIB_SAMPLES      32U
 #define LIS3DSH_EMA_SHIFT          2U
-#define FSM_ALERT_THRESHOLD_MG     3000U
+#define FSM_MOTION_THRESHOLD_MG    1500U  // Lowered from 3000 for easier triggering
+#define FSM_PROXIMITY_THRESHOLD_MM 500U
+#define FSM_LOCK_TIMEOUT_MS        5000U
 
 #define VL53L1X_I2C_ADDR_7BIT       0x29U
 #define VL53L1X_I2C_ADDR_8BIT       (VL53L1X_I2C_ADDR_7BIT << 1)
 #define VL53L1X_TIMING_BUDGET_US    50000U
-#define VL53L1X_INTERMEASUREMENT_MS 100U  // Must be >= timing_budget + 4ms guard time
+#define VL53L1X_INTERMEASUREMENT_MS 100U
 
 #define ABS_I32(x)                 ((int32_t)((x) < 0 ? -(x) : (x)))
 /* USER CODE END PD */
@@ -188,7 +199,7 @@ void MX_FREERTOS_Init(void) {
 
   /* USER CODE BEGIN RTOS_QUEUES */
   sensorQueueHandle = osMessageQueueNew(SENSOR_QUEUE_LENGTH, sizeof(SensorSample_t), NULL);
-  processingQueueHandle = osMessageQueueNew(PROCESSING_QUEUE_LENGTH, sizeof(ProcessingResult_t), NULL);
+  processingQueueHandle = osMessageQueueNew(PROCESSING_QUEUE_LENGTH, sizeof(FusedSensorData_t), NULL);
   outputQueueHandle = osMessageQueueNew(OUTPUT_QUEUE_LENGTH, sizeof(FsmDecision_t), NULL);
   distanceQueueHandle = osMessageQueueNew(DISTANCE_QUEUE_LENGTH, sizeof(DistanceSample_t), NULL);
   /* USER CODE END RTOS_QUEUES */
@@ -323,18 +334,41 @@ void StartSensorTask(void *argument)
 void StartProcessingTask(void *argument)
 {
   /* USER CODE BEGIN ProcessingTask */
+  static uint32_t last_motion_mg = 0;
+  static uint16_t last_distance_mm = 0;
+  
   /* Infinite loop */
   for(;;)
   {
-    SensorSample_t sample;
-    if (osMessageQueueGet(sensorQueueHandle, &sample, NULL, osWaitForever) == osOK) {
-      uint32_t magnitude = (uint32_t)(ABS_I32(sample.x_mg) + ABS_I32(sample.y_mg) + ABS_I32(sample.z_mg));
-      ProcessingResult_t result = {
-        .magnitude = magnitude,
-        .tick = sample.tick
-      };
-      (void)osMessageQueuePut(processingQueueHandle, &result, 0U, 0U);
+    SensorSample_t accel_sample;
+    DistanceSample_t distance_sample;
+    bool data_updated = false;
+    
+    /* Drain ALL pending accelerometer samples (keep latest) */
+    while (osMessageQueueGet(sensorQueueHandle, &accel_sample, NULL, 0) == osOK) {
+      last_motion_mg = (uint32_t)(ABS_I32(accel_sample.x_mg) + 
+                                   ABS_I32(accel_sample.y_mg) + 
+                                   ABS_I32(accel_sample.z_mg));
+      data_updated = true;
     }
+    
+    /* Drain ALL pending distance samples (keep latest) */
+    while (osMessageQueueGet(distanceQueueHandle, &distance_sample, NULL, 0) == osOK) {
+      last_distance_mm = distance_sample.distance_mm;
+      data_updated = true;
+    }
+    
+    /* Only send fused data if we have new sensor readings */
+    if (data_updated) {
+      FusedSensorData_t fused = {
+        .motion_magnitude_mg = last_motion_mg,
+        .distance_mm = last_distance_mm,
+        .tick = osKernelGetTickCount()
+      };
+      (void)osMessageQueuePut(processingQueueHandle, &fused, 0U, 0U);
+    }
+    
+    osDelay(20);  /* Poll every 20ms */
   }
   /* USER CODE END ProcessingTask */
 }
@@ -349,15 +383,81 @@ void StartProcessingTask(void *argument)
 void StartFsmTask(void *argument)
 {
   /* USER CODE BEGIN FsmTask */
+  FsmState_t state = FSM_STATE_IDLE;
+  uint32_t state_enter_tick = 0;
+  uint32_t alert_count = 0;
+  
   /* Infinite loop */
   for(;;)
   {
-    ProcessingResult_t result;
-    if (osMessageQueueGet(processingQueueHandle, &result, NULL, osWaitForever) == osOK) {
+    FusedSensorData_t fused;
+    if (osMessageQueueGet(processingQueueHandle, &fused, NULL, osWaitForever) == osOK) {
+      
+      bool motion_detected = (fused.motion_magnitude_mg > FSM_MOTION_THRESHOLD_MG);
+      bool object_near = (fused.distance_mm > 0 && fused.distance_mm < FSM_PROXIMITY_THRESHOLD_MM);
+      uint32_t state_duration = osKernelGetTickCount() - state_enter_tick;
+      
       FsmDecision_t decision = {
-        .decision = (result.magnitude > FSM_ALERT_THRESHOLD_MG) ? FSM_DECISION_ALERT : FSM_DECISION_NONE,
-        .tick = result.tick
+        .decision = FSM_DECISION_NONE,
+        .tick = fused.tick
       };
+      
+      switch (state) {
+        case FSM_STATE_IDLE:
+          if (motion_detected || object_near) {
+            state = FSM_STATE_ALERT;
+            state_enter_tick = osKernelGetTickCount();
+            alert_count = 0;
+            decision.decision = FSM_DECISION_ALERT;
+            printf("[FSM] IDLE -> ALERT (motion=%u mg, dist=%u mm)\r\n", 
+                   fused.motion_magnitude_mg, fused.distance_mm);
+          }
+          break;
+          
+        case FSM_STATE_ALERT:
+          if (motion_detected && object_near) {
+            alert_count++;
+            printf("  [FSM] Dual threat: motion=%u mg, dist=%u mm (count=%u)\r\n",
+                   fused.motion_magnitude_mg, fused.distance_mm, alert_count);
+            /* Lock after sustained dual-threat for 100ms+ */
+            if (alert_count >= 2) {
+              state = FSM_STATE_LOCK;
+              state_enter_tick = osKernelGetTickCount();
+              decision.decision = FSM_DECISION_LOCK;
+              printf("[FSM] ALERT -> LOCK (sustained threat)\r\n");
+            } else {
+              decision.decision = FSM_DECISION_ALERT;
+            }
+          } else if (!motion_detected && !object_near) {
+            /* Threat cleared */
+            state = FSM_STATE_IDLE;
+            state_enter_tick = osKernelGetTickCount();
+            decision.decision = FSM_DECISION_NONE;
+            printf("[FSM] ALERT -> IDLE (threat cleared)\r\n");
+          } else {
+            decision.decision = FSM_DECISION_ALERT;
+            alert_count = 0;
+          }
+          break;
+          
+        case FSM_STATE_LOCK:
+          if (state_duration > FSM_LOCK_TIMEOUT_MS) {
+            /* Timeout: return to IDLE */
+            state = FSM_STATE_IDLE;
+            state_enter_tick = osKernelGetTickCount();
+            decision.decision = FSM_DECISION_NONE;
+            printf("[FSM] LOCK -> IDLE (timeout)\r\n");
+          } else {
+            /* Sustain lock */
+            decision.decision = FSM_DECISION_LOCK;
+          }
+          break;
+          
+        default:
+          state = FSM_STATE_IDLE;
+          break;
+      }
+      
       (void)osMessageQueuePut(outputQueueHandle, &decision, 0U, 0U);
     }
   }
@@ -374,13 +474,32 @@ void StartFsmTask(void *argument)
 void StartOutputTask(void *argument)
 {
   /* USER CODE BEGIN OutputTask */
+  FsmDecisionType_t last_decision = FSM_DECISION_NONE;
+  
   /* Infinite loop */
   for(;;)
   {
     FsmDecision_t decision;
     if (osMessageQueueGet(outputQueueHandle, &decision, NULL, osWaitForever) == osOK) {
-      if (decision.decision == FSM_DECISION_ALERT) {
-        printf("ALERT: magnitude exceeded threshold\r\n");
+      /* Only print on state changes */
+      if (decision.decision != last_decision) {
+        switch (decision.decision) {
+          case FSM_DECISION_NONE:
+            printf("  [OUTPUT] IDLE: System normal\r\n");
+            break;
+            
+          case FSM_DECISION_ALERT:
+            printf("  [OUTPUT] ALERT: Threat detected - monitoring\r\n");
+            break;
+            
+          case FSM_DECISION_LOCK:
+            printf("  [OUTPUT] LOCK: Security engaged!\r\n");
+            break;
+            
+          default:
+            break;
+        }
+        last_decision = decision.decision;
       }
     }
   }
