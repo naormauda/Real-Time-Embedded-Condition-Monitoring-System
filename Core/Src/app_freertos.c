@@ -32,6 +32,7 @@
 #include "vl53l1_platform.h"
 #include "actuator_driver.h"
 #include "feature_extraction.h"
+#include "ml_model.h"
 
 /* USER CODE END Includes */
 
@@ -351,6 +352,11 @@ void StartProcessingTask(void *argument)
     printf("[ERR] Feature extraction init failed\r\n");
   }
 
+  /* Initialize ML inference module */
+  if (ml_init() != ML_OK) {
+    printf("[ERR] ML model init failed\r\n");
+  }
+
   /* Infinite loop */
   for(;;)
   {
@@ -376,9 +382,20 @@ void StartProcessingTask(void *argument)
         fe_format_features(log_buffer, sizeof(log_buffer));
         printf("[FE] %s\r\n", log_buffer);
 
-        /* TODO: Pass features to ML model for inference
-         * const float *features = fe_get_features();
-         * ml_inference_result_t result = ml_predict(features);
+        /* Run ML inference on the extracted features */
+        const float *features = fe_get_features();
+        ml_inference_result_t ml_result = ml_predict(features);
+
+        /* Log the ML inference result */
+        ml_format_result(&ml_result, log_buffer, sizeof(log_buffer));
+        printf("[ML] %s\r\n", log_buffer);
+
+        /* TODO: Use ML result to guide FSM decisions
+         * if (ml_result.is_anomaly) {
+         *     fsm_trigger_alert_ml(ml_result.anomaly_score);
+         * } else {
+         *     fsm_trigger_normal();
+         * }
          */
 
         /* Reset for next window */

@@ -40,6 +40,7 @@ add_subdirectory(cmake/stm32cubemx)
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/actuator_driver.c
     Core/Src/feature_extraction.c
+    Core/Src/ml_model.c
 )
 
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE

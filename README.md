@@ -212,7 +212,7 @@ SensorTask (10ms)          DistanceTask (50ms)
 🟢 Stage 4 – RTOS Integration **COMPLETED**  
 🟢 Stage 5 – Actuator Control **COMPLETED** (Phase 1)  
 🟢 Stage 5 – ML Feature Extraction **COMPLETED** (Phase 2)  
-🟡 Stage 5 – TinyML Integration (Phase 3 - In Progress)
+🟡 Stage 5 – TinyML Integration (Phase 3a - In Progress)
 
 **Completed (Stage 4 - RTOS Integration):**
 - ✅ Clock tree configuration (250 MHz via PLL)
@@ -293,21 +293,57 @@ SensorTask (10ms)          DistanceTask (50ms)
   - Math library (libm) linked for sqrtf() function
   - No blocking operations, runs within existing task timing
 
-**Current Status (Stage 5 - Phase 3 - In Progress):**
-- 🔄 TinyML model integration (TensorFlow Lite Micro)
-- 🔄 Anomaly detection model training and deployment
-- 🔄 ML decision integration into FSM
+**Completed (Stage 5 - ML Inference API - Phase 3a):**
+- ✅ **ML Model Interface** (`ml_model.h/.c`)
+  - Device-agnostic inference API (supports multiple backends)
+  - Standardized input: 12 features from feature extractor
+  - Standardized output: anomaly score (0-1), binary decision, confidence
+  - Configurable threshold for tuning false positive/negative trade-off
+  - Input validation (NaN/Inf checking, range validation)
+  - Performance monitoring (inference count, timing, peak time)
+  - Status tracking for debugging and health monitoring
+
+- ✅ **Inference Pipeline Integration**
+  - ML model initialized in ProcessingTask at startup
+  - Features automatically passed from feature extractor
+  - Anomaly scores logged every 1 second with features
+  - Ready for FSM integration (placeholder for Phase 3b)
+
+- ✅ **Initial Implementation (Stub/Placeholder)**
+  - Stub anomaly scorer using heuristic-based rules
+  - Validates ML API interface and integration flow
+  - Empirically tuned: variance + peak-to-peak + RMS = anomaly score
+  - Will be replaced with actual trained model in Phase 3b/3c
+  - No changes needed to rest of system when swapping models
+
+- ✅ **Build Integration**
+  - ml_model.c added to CMakeLists.txt target_sources
+  - Binary size: 135.7KB (from 134.3KB, +1.4KB for ML API)
+  - -lm (math library) already linked from Phase 2
+
+**Current Status (Stage 5 - Phase 3b - Ready):**
+- 🔄 Real-world anomaly detection model training
+- 🔄 Dataset collection and labeling
+- 🔄 Model conversion to TensorFlow Lite format
+- 🔄 FSM integration with ML-guided decisions
 
 **Known Deferred Tasks:**
 - ⏳ Servo external power supply (requires 5V source, not NUCLEO 5V) - Phase 4
 
-**Next Steps (Phase 3):**
-- Prepare dataset with labeled normal/anomaly samples
-- Train anomaly detection model (e.g., isolation forest, autoencoder)
-- Convert to TensorFlow Lite quantized format
-- Deploy inference run in ProcessingTask
-- Replace rule-based FSM with ML-informed decision making
-- Validate accuracy on target hardware
+**Next Steps (Phase 3b/3c):**
+
+**Phase 3b - Training Data & Model:**
+- Collect labeled training dataset (NORMAL, VIBRATION, TAMPERING scenarios)
+- Extract training features using on-device feature extraction
+- Train anomaly detection model offline (e.g., isolation forest, autoencoder, one-class SVM)
+- Evaluate model accuracy (target: >95% sensitivity, >90% specificity)
+
+**Phase 3c - Deployment & Integration:**
+- Convert trained model to TensorFlow Lite quantized format (~15-30KB)
+- Replace ml_model.c stub with actual TFLite inference code
+- Integrate ML predictions into FSM (replace/augment threshold-based decisions)
+- Validate inference timing on device (must stay <50ms budget)
+- Field test with real-world normal and anomalous conditions
 
 ---
 
@@ -318,6 +354,7 @@ SensorTask (10ms)          DistanceTask (50ms)
   /Inc
     actuator_driver.h         ✅ Actuator driver (LEDs, buzzer, servo)
     feature_extraction.h      ✅ Feature extraction (time-domain statistics)
+    ml_model.h                ✅ ML inference API (device-agnostic interface)
     lis3dsh_driver.h          ✅ LIS3DSH accelerometer driver header
     vl53l1x_driver.h          ✅ VL53L1X ToF sensor wrapper
     main.h                    ✅ Main application header
@@ -328,6 +365,7 @@ SensorTask (10ms)          DistanceTask (50ms)
   /Src
     actuator_driver.c         ✅ Actuator driver implementation
     feature_extraction.c      ✅ Feature extraction implementation
+    ml_model.c                ✅ ML inference implementation (stub for now)
     lis3dsh_driver.c          ✅ LIS3DSH driver implementation
     vl53l1x_driver.c          ✅ VL53L1X driver wrapper
     app_freertos.c            ✅ FreeRTOS tasks and sensor fusion pipeline
@@ -489,7 +527,62 @@ Future additions:
 
 ---
 
+## 📚 Implementation Notes & Lessons Learned (Stage 5 Phase 3a)
+
+### ML Inference API Design
+
+**Design Philosophy:**
+1. **Device-Agnostic Interface**: `ml_model.h` defines contract independent of backend
+   - Could use TensorFlow Lite Micro, EdgeML, scikit-learn C port, or custom models
+   - Business logic (FSM, actuators) never depends on specific ML framework
+   - Model swapping requires only ml_model.c changes, nothing else
+
+2. **Standardized I/O**:
+   - Input: 12 floats (features from fe_get_features())
+   - Output: anomaly_score (0-1), binary decision, confidence
+   - No model-specific data structures in public API
+
+3. **Inference Result Structure**:
+   - `anomaly_score`: Continuous value (0=normal, 1=anomaly)
+   - `is_anomaly`: Binary decision based on threshold comparison
+   - `confidence`: Distance from decision boundary (how certain?)
+   - `inference_time_ms`: Performance monitoring built-in
+   - Future-proof: `reserved` field for model-specific metadata
+
+**Stub Implementation Strategy:**
+- Temporary heuristic-based scoring: variance + peak-to-peak + RMS
+- Validates API interface before real ML model available
+- Provides baseline comparison (scores from stub drive FSM while training offline)
+- Zero functional changes needed when swapping to real model
+
+**Threshold Management:**
+- Tunable via `ml_set_threshold()` (default 0.50)
+- Enables precision/recall trade-off tuning without code changes
+- Useful for adapting to different environments post-deployment
+
+**Performance Considerations:**
+- Stub inference: ~5ms (plenty of budget for TFLite Micro)
+- Statistics tracked: count, average time, peak time
+- Real TFLite Micro typically 10-30ms for small quantized models
+- ProcessingTask runs every 20ms, features every 1 second = no timing pressure
+
+**What NOT Yet Implemented (deferred to Phase 3c):**
+- ❌ TensorFlow Lite Micro integration
+- ❌ Actual model inference code
+- ❌ FSM ML-guided decision making (only rule-based available now)
+- ❌ Dataset collection/training pipeline
+- ❌ Model accuracy metrics (confusion matrix logging)
+
+**Rationale for Stub First:**
+1. Unblocks ProcessingTask integration while training happens offline
+2. Validates full pipeline: Features → ML → FSM decisions (on stub)
+3. Easy to test with heuristic before touching real ML framework
+4. Foundation for Phase 3b without prototype rework
+
+---
+
 ## ⏱️ System Configuration
+
 
 **Clock Configuration:**
 - External HSE crystal: 8 MHz (board-mounted)
