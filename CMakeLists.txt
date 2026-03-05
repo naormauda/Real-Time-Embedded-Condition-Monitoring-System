@@ -37,13 +37,13 @@ add_subdirectory(cmake/stm32cubemx)
 #     # Add user defined library search paths here
 # )
 
-# target_sources(${CMAKE_PROJECT_NAME} PRIVATE
-#     # Add your own .c files here (e.g., Core/Src/my_file.c)
-# )
+target_sources(${CMAKE_PROJECT_NAME} PRIVATE
+    Core/Src/actuator_driver.c
+)
 
-# target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
-#     # Add your own header folders here
-# )
+target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
+    Core/Inc
+)
 
 # target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
 #     # Add user defined symbols here

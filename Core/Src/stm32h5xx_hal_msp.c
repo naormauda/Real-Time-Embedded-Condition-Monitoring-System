@@ -332,4 +332,62 @@ void HAL_UART_MspDeInit(UART_HandleTypeDef* huart)
 
 /* USER CODE BEGIN 1 */
 
+/**
+  * @brief TIM MSP Initialization
+  * This function configures the hardware resources for TIM3
+  * @param htim_base: TIM handle pointer
+  * @retval None
+  */
+void HAL_TIM_Base_MspInit(TIM_HandleTypeDef* htim_base)
+{
+  GPIO_InitTypeDef GPIO_InitStruct = {0};
+  
+  if(htim_base->Instance==TIM3)
+  {
+    /* Peripheral clock enable */
+    __HAL_RCC_TIM3_CLK_ENABLE();
+    __HAL_RCC_GPIOA_CLK_ENABLE();
+    __HAL_RCC_GPIOC_CLK_ENABLE();
+    
+    /**TIM3 GPIO Configuration
+    PA6     ------> TIM3_CH1 (Servo PWM)
+    PC7     ------> TIM3_CH2 (Buzzer PWM)
+    */
+    GPIO_InitStruct.Pin = GPIO_PIN_6;
+    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+    GPIO_InitStruct.Pull = GPIO_NOPULL;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+    GPIO_InitStruct.Alternate = GPIO_AF2_TIM3;
+    HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+    
+    GPIO_InitStruct.Pin = GPIO_PIN_7;
+    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+    GPIO_InitStruct.Pull = GPIO_NOPULL;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+    GPIO_InitStruct.Alternate = GPIO_AF2_TIM3;
+    HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+  }
+}
+
+/**
+  * @brief TIM MSP De-Initialization
+  * @param htim_base: TIM handle pointer
+  * @retval None
+  */
+void HAL_TIM_Base_MspDeInit(TIM_HandleTypeDef* htim_base)
+{
+  if(htim_base->Instance==TIM3)
+  {
+    /* Peripheral clock disable */
+    __HAL_RCC_TIM3_CLK_DISABLE();
+    
+    /**TIM3 GPIO Configuration
+    PA6     ------> TIM3_CH1
+    PC7     ------> TIM3_CH2
+    */
+    HAL_GPIO_DeInit(GPIOA, GPIO_PIN_6);
+    HAL_GPIO_DeInit(GPIOC, GPIO_PIN_7);
+  }
+}
+
 /* USER CODE END 1 */

@@ -30,6 +30,7 @@
 #include "lis3dsh_driver.h"
 #include "vl53l1_api.h"
 #include "vl53l1_platform.h"
+#include "actuator_driver.h"
 
 /* USER CODE END Includes */
 
@@ -106,6 +107,7 @@ typedef struct {
 
 extern SPI_HandleTypeDef hspi1;
 extern I2C_HandleTypeDef hi2c1;
+extern TIM_HandleTypeDef htim3;
 
 static osMessageQueueId_t sensorQueueHandle;
 static osMessageQueueId_t processingQueueHandle;
@@ -182,7 +184,12 @@ void StartDistanceTask(void *argument);
   */
 void MX_FREERTOS_Init(void) {
   /* USER CODE BEGIN Init */
-
+  /* Initialize actuator driver */
+  if (!Actuator_Init(&htim3)) {
+    printf("ERROR: Actuator initialization failed!\r\n");
+  } else {
+    printf("Actuator driver initialized successfully\r\n");
+  }
   /* USER CODE END Init */
 
   /* USER CODE BEGIN RTOS_MUTEX */
@@ -409,7 +416,7 @@ void StartFsmTask(void *argument)
             state_enter_tick = osKernelGetTickCount();
             alert_count = 0;
             decision.decision = FSM_DECISION_ALERT;
-            printf("[FSM] IDLE -> ALERT (motion=%u mg, dist=%u mm)\r\n", 
+            printf("[FSM] IDLE -> ALERT (motion=%lu mg, dist=%u mm)\r\n", 
                    fused.motion_magnitude_mg, fused.distance_mm);
           }
           break;
@@ -417,10 +424,10 @@ void StartFsmTask(void *argument)
         case FSM_STATE_ALERT:
           if (motion_detected && object_near) {
             alert_count++;
-            printf("  [FSM] Dual threat: motion=%u mg, dist=%u mm (count=%u)\r\n",
+            printf("  [FSM] Dual threat: motion=%lu mg, dist=%u mm (count=%lu)\r\n",
                    fused.motion_magnitude_mg, fused.distance_mm, alert_count);
-            /* Lock after sustained dual-threat for 100ms+ */
-            if (alert_count >= 2) {
+            /* Lock after single dual-threat detection (easier to test) */
+            if (alert_count >= 1) {
               state = FSM_STATE_LOCK;
               state_enter_tick = osKernelGetTickCount();
               decision.decision = FSM_DECISION_LOCK;
@@ -475,25 +482,33 @@ void StartOutputTask(void *argument)
 {
   /* USER CODE BEGIN OutputTask */
   FsmDecisionType_t last_decision = FSM_DECISION_NONE;
+  uint32_t buzzer_update_counter = 0;
   
   /* Infinite loop */
   for(;;)
   {
     FsmDecision_t decision;
-    if (osMessageQueueGet(outputQueueHandle, &decision, NULL, osWaitForever) == osOK) {
-      /* Only print on state changes */
+    
+    /* Check for new decisions with timeout to allow buzzer updates */
+    osStatus_t status = osMessageQueueGet(outputQueueHandle, &decision, NULL, 50);
+    
+    if (status == osOK) {
+      /* Only update actuators on state changes */
       if (decision.decision != last_decision) {
         switch (decision.decision) {
           case FSM_DECISION_NONE:
             printf("  [OUTPUT] IDLE: System normal\r\n");
+            Actuator_SetState(ACTUATOR_STATE_IDLE);
             break;
             
           case FSM_DECISION_ALERT:
             printf("  [OUTPUT] ALERT: Threat detected - monitoring\r\n");
+            Actuator_SetState(ACTUATOR_STATE_ALERT);
             break;
             
           case FSM_DECISION_LOCK:
             printf("  [OUTPUT] LOCK: Security engaged!\r\n");
+            Actuator_SetState(ACTUATOR_STATE_LOCK);
             break;
             
           default:
@@ -501,6 +516,13 @@ void StartOutputTask(void *argument)
         }
         last_decision = decision.decision;
       }
+    }
+    
+    /* Update buzzer pattern (for beeping) every 50ms */
+    buzzer_update_counter++;
+    if (buzzer_update_counter >= 1) {  // 50ms * 1 = 50ms updates
+      Actuator_Buzzer_Update();
+      buzzer_update_counter = 0;
     }
   }
   /* USER CODE END OutputTask */

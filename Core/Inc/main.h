@@ -61,6 +61,22 @@ void Error_Handler(void);
 #define LIS3DSH_CS_GPIO_Port GPIOD
 
 /* USER CODE BEGIN Private defines */
+/* Actuator GPIO Pin Definitions */
+#define LED_GREEN_Pin GPIO_PIN_0
+#define LED_GREEN_GPIO_Port GPIOB
+
+#define LED_YELLOW_Pin GPIO_PIN_4
+#define LED_YELLOW_GPIO_Port GPIOE
+
+#define LED_RED_Pin GPIO_PIN_6
+#define LED_RED_GPIO_Port GPIOC
+
+/* TIM3 PWM Pins */
+#define SERVO_PWM_Pin GPIO_PIN_6      // TIM3_CH1
+#define SERVO_PWM_GPIO_Port GPIOA
+
+#define BUZZER_PWM_Pin GPIO_PIN_7     // TIM3_CH2
+#define BUZZER_PWM_GPIO_Port GPIOC
 
 /* USER CODE END Private defines */
 
