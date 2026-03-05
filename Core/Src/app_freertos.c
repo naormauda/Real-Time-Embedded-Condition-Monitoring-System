@@ -31,6 +31,7 @@
 #include "vl53l1_api.h"
 #include "vl53l1_platform.h"
 #include "actuator_driver.h"
+#include "feature_extraction.h"
 
 /* USER CODE END Includes */
 
@@ -343,7 +344,13 @@ void StartProcessingTask(void *argument)
   /* USER CODE BEGIN ProcessingTask */
   static uint32_t last_motion_mg = 0;
   static uint16_t last_distance_mm = 0;
-  
+  char log_buffer[256];
+
+  /* Initialize feature extraction module */
+  if (!fe_init()) {
+    printf("[ERR] Feature extraction init failed\r\n");
+  }
+
   /* Infinite loop */
   for(;;)
   {
@@ -357,6 +364,26 @@ void StartProcessingTask(void *argument)
                                    ABS_I32(accel_sample.y_mg) + 
                                    ABS_I32(accel_sample.z_mg));
       data_updated = true;
+
+      /* Push sample to feature extractor (convert mg to float) */
+      fe_push_sample((float)accel_sample.x_mg,
+                     (float)accel_sample.y_mg,
+                     (float)accel_sample.z_mg);
+
+      /* Check if feature window is complete */
+      if (fe_is_ready()) {
+        /* Log the extracted features */
+        fe_format_features(log_buffer, sizeof(log_buffer));
+        printf("[FE] %s\r\n", log_buffer);
+
+        /* TODO: Pass features to ML model for inference
+         * const float *features = fe_get_features();
+         * ml_inference_result_t result = ml_predict(features);
+         */
+
+        /* Reset for next window */
+        fe_reset();
+      }
     }
     
     /* Drain ALL pending distance samples (keep latest) */

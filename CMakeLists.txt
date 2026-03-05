@@ -39,6 +39,7 @@ add_subdirectory(cmake/stm32cubemx)
 
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/actuator_driver.c
+    Core/Src/feature_extraction.c
 )
 
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
@@ -55,6 +56,7 @@ list(REMOVE_ITEM CMAKE_C_IMPLICIT_LINK_LIBRARIES ob)
 # Add linked libraries - Matching CubeMX plain signature
 target_link_libraries(${CMAKE_PROJECT_NAME}
     stm32cubemx
+    m
 )
 
 

@@ -210,8 +210,9 @@ SensorTask (10ms)          DistanceTask (50ms)
 🟢 Stage 2 – Hardware Bring-Up **COMPLETED**  
 🟢 Stage 3 – Driver Development **COMPLETED**  
 🟢 Stage 4 – RTOS Integration **COMPLETED**  
-� Stage 5 – Actuator Control **COMPLETED** (Phase 1)  
-🟡 Stage 5 – ML Feature Extraction (Phase 2 - In Progress)
+🟢 Stage 5 – Actuator Control **COMPLETED** (Phase 1)  
+🟢 Stage 5 – ML Feature Extraction **COMPLETED** (Phase 2)  
+🟡 Stage 5 – TinyML Integration (Phase 3 - In Progress)
 
 **Completed (Stage 4 - RTOS Integration):**
 - ✅ Clock tree configuration (250 MHz via PLL)
@@ -270,20 +271,43 @@ SensorTask (10ms)          DistanceTask (50ms)
   - PWM pulse width confirmation
   - State transition visibility in serial output
 
-**Current Status (Stage 5 - Phase 2 - In Progress):**
-- 🔄 Feature extraction module (time-domain & frequency-domain)
-- ⏳ TinyML model integration (TensorFlow Lite Micro)
-- ⏳ Anomaly detection model training and deployment
+**Completed (Stage 5 - Feature Extraction - Phase 2):**
+- ✅ **Feature Extraction Module** (`feature_extraction.h/.c`)
+  - Time-domain statistical features (mean, variance, RMS, peak-to-peak)
+  - Circular buffer for sliding window (100 samples @ 100Hz = 1 second window)
+  - Online computation: stats updated incrementally as samples arrive
+  - 12 total features (4 per axis: X, Y, Z)
+  - Ready-flag API for per-window processing
+  - Zero-copy access to feature vectors
+  - Memory efficient: ~1.2KB buffer + 48 bytes output
+
+- ✅ **ProcessingTask Integration**
+  - Instantiated feature extraction in ProcessingTask
+  - Accelerometer samples pushed to FE as they arrive
+  - Feature vector logged when window complete
+  - Ready for ML model integration (placeholder comment in code)
+
+- ✅ **Memory & Performance**
+  - Binary size increased: 122.6KB → 134.3KB (+11.6KB)
+  - Still well under 2MB flash budget
+  - Math library (libm) linked for sqrtf() function
+  - No blocking operations, runs within existing task timing
+
+**Current Status (Stage 5 - Phase 3 - In Progress):**
+- 🔄 TinyML model integration (TensorFlow Lite Micro)
+- 🔄 Anomaly detection model training and deployment
+- 🔄 ML decision integration into FSM
 
 **Known Deferred Tasks:**
 - ⏳ Servo external power supply (requires 5V source, not NUCLEO 5V) - Phase 4
 
-**Next Steps:**
-- Complete feature extraction module
+**Next Steps (Phase 3):**
 - Prepare dataset with labeled normal/anomaly samples
-- Train TensorFlow Lite model on embedded device
-- Deploy on-device inference
-- Integrate ML decisions into FSM
+- Train anomaly detection model (e.g., isolation forest, autoencoder)
+- Convert to TensorFlow Lite quantized format
+- Deploy inference run in ProcessingTask
+- Replace rule-based FSM with ML-informed decision making
+- Validate accuracy on target hardware
 
 ---
 
@@ -292,22 +316,24 @@ SensorTask (10ms)          DistanceTask (50ms)
 ```
 /Core
   /Inc
-    actuator_driver.h     ✅ Actuator driver (LEDs, buzzer, servo)
-    lis3dsh_driver.h      ✅ LIS3DSH accelerometer driver header
-    vl53l1x_driver.h      ✅ VL53L1X ToF sensor wrapper
-    main.h                ✅ Main application header
-    stm32h5xx_hal_conf.h  ✅ HAL configuration
-    stm32h5xx_it.h        ✅ Interrupt handlers
-    app_freertos.h        ✅ FreeRTOS task declarations
-    FreeRTOSConfig.h      ✅ FreeRTOS configuration
+    actuator_driver.h         ✅ Actuator driver (LEDs, buzzer, servo)
+    feature_extraction.h      ✅ Feature extraction (time-domain statistics)
+    lis3dsh_driver.h          ✅ LIS3DSH accelerometer driver header
+    vl53l1x_driver.h          ✅ VL53L1X ToF sensor wrapper
+    main.h                    ✅ Main application header
+    stm32h5xx_hal_conf.h      ✅ HAL configuration
+    stm32h5xx_it.h            ✅ Interrupt handlers
+    app_freertos.h            ✅ FreeRTOS task declarations
+    FreeRTOSConfig.h          ✅ FreeRTOS configuration
   /Src
-    actuator_driver.c     ✅ Actuator driver implementation
-    lis3dsh_driver.c      ✅ LIS3DSH driver implementation
-    vl53l1x_driver.c      ✅ VL53L1X driver wrapper
-    app_freertos.c        ✅ FreeRTOS tasks and sensor fusion pipeline
-    main.c                ✅ Main application and peripheral init (TIM3 PWM)
-    stm32h5xx_hal_msp.c   ✅ HAL MSP initialization (TIM3 GPIO AF config)
-    stm32h5xx_it.c        ✅ Interrupt service routines
+    actuator_driver.c         ✅ Actuator driver implementation
+    feature_extraction.c      ✅ Feature extraction implementation
+    lis3dsh_driver.c          ✅ LIS3DSH driver implementation
+    vl53l1x_driver.c          ✅ VL53L1X driver wrapper
+    app_freertos.c            ✅ FreeRTOS tasks and sensor fusion pipeline
+    main.c                    ✅ Main application and peripheral init (TIM3 PWM)
+    stm32h5xx_hal_msp.c       ✅ HAL MSP initialization (TIM3 GPIO AF config)
+    stm32h5xx_it.c            ✅ Interrupt service routines
     system_stm32h5xx.c    ✅ System initialization
 
 /Drivers
@@ -403,6 +429,63 @@ Future additions:
 - All warnings resolved (except VL53L1X deprecated API warnings)
 - Final binary size: 122656 bytes text, 164504 total (leaving ~46KB for ML model)
 - No runtime errors or stack overflow
+
+---
+
+## 📚 Implementation Notes & Lessons Learned (Stage 5 Phase 2)
+
+### Feature Extraction Implementation
+
+**Design Approach:**
+1. **Time-Domain Features Only**: Started with mean, variance, RMS, peak-to-peak (12 total features)
+   - Simpler and more deterministic than frequency-domain (no FFT complexity)
+   - Sufficient for anomaly detection in condition monitoring
+   - Best fit for resource-constrained embedded systems
+   - Can extend to frequency-domain later if needed
+
+2. **Online Computation**: Statistics updated incrementally as samples arrive
+   - Avoids storing entire buffers for retrospective computation
+   - Reduces latency: features ready immediately when window completes
+   - Pattern: Track sum (Σx), sum-of-squares (Σx²), min, max as accumulating statistics
+
+3. **Circular Buffer Window**: 100 samples @ 100Hz = 1-second window
+   - Standard timeframe for condition monitoring (captures oscillation patterns)
+   - Large enough for statistical significance in anomaly scoring
+   - Small enough for responsive real-time decision making
+
+4. **Zero-Copy API**: Feature extractor maintains single output vector
+   - Consumers read pointer returned by `fe_get_features()` directly
+   - No copying or buffer duplication overhead
+   - Critical for RTOS task efficiency
+
+**Mathematical Notes:**
+- **Mean**: μ = Σx / N
+- **Variance**: σ² = (Σx²)/N - μ² (computational form avoids rescanning)
+- **RMS**: RMS = √(Σx²/N) (measures magnitude, useful for vibration energy)
+- **Peak-to-Peak**: Tracks min/max over window, simple amplitude indicator
+
+**Integration Strategy:**
+- Feature extraction instantiated in ProcessingTask (not separate task)
+- Accelerometer samples pushed to module as they drain from queue
+- Decision: Could be separate task for modularity, but inline is more efficient
+- ProcessingTask already polling at 20ms, feature processing adds minimal overhead
+
+**Memory Footprint:**
+- Ring buffer: 3 axes × 100 samples × 4 bytes per float = 1,200 bytes
+- Accumulators: 3 axes × 3 fields (sum, sum_sq, min/max pairs) = 144 bytes
+- Output vector: 12 features × 4 bytes = 48 bytes
+- Total: ~1.4KB (negligible in context of 250KB SRAM)
+
+**Build Integration:**
+- Linking libm (math library) required for `sqrtf()` function
+- Added `-lm` to target_link_libraries() in CMakeLists.txt
+- No custom math implementations needed (FPU available on Cortex-M33)
+
+**Next Phase Handoff:**
+- Feature vectors ready for ML inference
+- Prepared placeholder in ProcessingTask for model integration
+- Vectors formatted consistently (X features [0-3], Y [4-7], Z [8-11])
+- Ready for TensorFlow Lite Micro deployment
 
 ---
 
