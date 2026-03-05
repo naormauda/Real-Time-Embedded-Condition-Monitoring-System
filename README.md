@@ -212,7 +212,8 @@ SensorTask (10ms)          DistanceTask (50ms)
 🟢 Stage 4 – RTOS Integration **COMPLETED**  
 🟢 Stage 5 – Actuator Control **COMPLETED** (Phase 1)  
 🟢 Stage 5 – ML Feature Extraction **COMPLETED** (Phase 2)  
-🟡 Stage 5 – TinyML Integration (Phase 3a - In Progress)
+� Stage 5 – ML Inference API **COMPLETED** (Phase 3a)  
+🟡 Stage 5 – Training Data & Model (Phase 3b - In Progress)
 
 **Completed (Stage 4 - RTOS Integration):**
 - ✅ Clock tree configuration (250 MHz via PLL)
@@ -321,29 +322,68 @@ SensorTask (10ms)          DistanceTask (50ms)
   - Binary size: 135.7KB (from 134.3KB, +1.4KB for ML API)
   - -lm (math library) already linked from Phase 2
 
-**Current Status (Stage 5 - Phase 3b - Ready):**
-- 🔄 Real-world anomaly detection model training
-- 🔄 Dataset collection and labeling
-- 🔄 Model conversion to TensorFlow Lite format
-- 🔄 FSM integration with ML-guided decisions
+**Current Status (Stage 5 - Phase 3b - In Progress):**
+- ✅ Training data collection tool (`tools/collect_training_data.py`)
+  - Serial interface to NUCLEO board
+  - Interactive scenario labeling (NORMAL/VIBRATION/TAMPERING)
+  - CSV export with timestamps and labels
+  - Data buffer for multiple collection sessions
+
+- ✅ Model training tool (`tools/train_anomaly_model.py`)
+  - Isolation Forest and One-Class SVM algorithms
+  - Automatic metric computation (accuracy, precision, recall, ROC-AUC)
+  - Confusion matrix generation
+  - Model and scaler persistence (.pkl format)
+
+- ✅ Comprehensive tools documentation (`tools/README.md`)
+  - Step-by-step data collection guide
+  - Algorithm selection and hyperparameter tuning
+  - Success criteria and troubleshooting
+  - Deployment checklist
+
+- 🔄 Next: Execute data collection → model training → TFLite conversion
 
 **Known Deferred Tasks:**
 - ⏳ Servo external power supply (requires 5V source, not NUCLEO 5V) - Phase 4
 
-**Next Steps (Phase 3b/3c):**
+**Next Steps (Phase 3b):**
 
-**Phase 3b - Training Data & Model:**
-- Collect labeled training dataset (NORMAL, VIBRATION, TAMPERING scenarios)
-- Extract training features using on-device feature extraction
-- Train anomaly detection model offline (e.g., isolation forest, autoencoder, one-class SVM)
-- Evaluate model accuracy (target: >95% sensitivity, >90% specificity)
+**How to Execute Phase 3b:**
 
-**Phase 3c - Deployment & Integration:**
-- Convert trained model to TensorFlow Lite quantized format (~15-30KB)
-- Replace ml_model.c stub with actual TFLite inference code
-- Integrate ML predictions into FSM (replace/augment threshold-based decisions)
-- Validate inference timing on device (must stay <50ms budget)
-- Field test with real-world normal and anomalous conditions
+1. **Flash Firmware**
+   ```bash
+   # Build and flash the latest firmware to NUCLEO board
+   cd build && ninja && # (upload smart_safe.bin via ST-LINK)
+   ```
+
+2. **Collect Training Data**
+   ```bash
+   cd tools
+   python3 collect_training_data.py --port COM3 --baudrate 115200
+   # Follow interactive prompts to collect NORMAL, VIBRATION, TAMPERING scenarios
+   # Exports to: training_data/training_data_combined.csv
+   ```
+
+3. **Train Anomaly Detection Model**
+   ```bash
+   python3 train_anomaly_model.py \
+       --data training_data/training_data_combined.csv \
+       --algorithm isolation_forest \
+       --contamination 0.15
+   # Generates: models/isolation_forest_*.pkl + metrics.json
+   ```
+
+4. **Evaluate Results**
+   - Review metrics: Recall >90%, Accuracy >85%, Precision >80%
+   - If metrics poor: collect more data or try different algorithm
+   - If metrics good: proceed to Phase 3c (TFLite deployment)
+
+**Phase 3c (Deployment) Prerequisites:**
+- [ ] Model accuracy meets targets
+- [ ] TensorFlow Lite conversion tool ready
+- [ ] C code generation for embedded inference
+- [ ] Integration with FSM decision logic
+
 
 ---
 
@@ -388,11 +428,16 @@ SensorTask (10ms)          DistanceTask (50ms)
 
 /cmake                    ✅ CMake build configuration
 /build                    ✅ Build artifacts (excluded from git)
+/tools                    ✅ Training & offline analysis tools
+  collect_training_data.py ✅ Real-time feature collection from device
+  train_anomaly_model.py   ✅ Model training (Isolation Forest / SVM)
+  README.md                ✅ Tools documentation & usage guide
 
 CMakeLists.txt            ✅ Root CMake configuration
 smart_safe.ioc            ✅ STM32CubeMX project file
 README.md                 ✅ This file
 LICENSE                   ✅ MIT License
+
 
 Future additions:
   /Core/Src
@@ -527,7 +572,56 @@ Future additions:
 
 ---
 
+## 📚 Implementation Notes & Lessons Learned (Stage 5 Phase 3b)
+
+### Training Data Collection & Model Training
+
+**Tools Location:** `tools/` directory
+
+**Phase 3b Pipeline:**
+1. **Collect Real-World Data** (`collect_training_data.py`)
+   - Connect NUCLEO board via serial (USB)
+   - Interactively label 3 scenarios: NORMAL, VIBRATION, TAMPERING
+   - Collects ~30 samples per scenario (1 sample = 1 second of features)
+   - Exports to CSV with timestamps and labels
+   
+2. **Train Anomaly Detection Model** (`train_anomaly_model.py`)
+   - Reads combined CSV dataset
+   - Trains Isolation Forest or One-Class SVM
+   - Evaluates: Accuracy, Precision, Recall, ROC-AUC
+   - Saves trained model (`.pkl`) + scaler
+   - Generates confusion matrix and metrics JSON
+   
+3. **Model Requirements** (for Phase 3c deployment)
+   - Must fit in remaining ~30 KB flash budget
+   - Inference must complete <50ms (ProcessingTask timing)
+   - Target accuracy: >85%, Recall >90%, Precision >80%
+
+**Key Insights:**
+- Stub in ml_model.c validates full pipeline before real model exists
+- Isolation Forest recommended: small model size, no deep learning framework needed
+- Feature scaling critical: scaler must be saved alongside model
+- Training happens offline on PC, deployment is just model swap in ml_model.c
+
+**Data Collection Tips:**
+- Collect from multiple time periods/conditions (sensor drift testing)
+- NORMAL: device stationary on stable surface (~30 samples)
+- VIBRATION: gentle movement, simulate environmental vibrations (~30 samples)
+- TAMPERING: rapid shaking, attempted intrusions (~30 samples)
+- Balance data: aim for similar sample counts per class
+- More data → better generalization (100+ samples total is good)
+
+**Common Issues:**
+- Serial connection fails: Check COM port, verify board is running
+- Poor model accuracy: Collect more data, check accelerometer calibration
+- Model too large: Use Isolation Forest, quantize, reduce trees
+
+See `tools/README.md` for detailed step-by-step instructions.
+
+---
+
 ## 📚 Implementation Notes & Lessons Learned (Stage 5 Phase 3a)
+
 
 ### ML Inference API Design
 

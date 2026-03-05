@@ -1,0 +1,24 @@
+# Training data (can be large, not needed in repo)
+training_data/
+*.csv
+
+# Trained models (non-C format)
+models/
+*.pkl
+*.pth
+*.h5
+*.onnx
+*.joblib
+
+# Generated artifacts
+*.pdf
+*.png
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
