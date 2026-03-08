@@ -72,6 +72,9 @@ typedef enum {
 typedef struct {
   uint32_t motion_magnitude_mg;
   uint16_t distance_mm;
+  float ml_score;
+  bool ml_anomaly;
+  bool ml_anomaly_sustained;
   uint32_t tick;
 } FusedSensorData_t;
 /* USER CODE END PTD */
@@ -86,9 +89,21 @@ typedef struct {
 
 #define LIS3DSH_CALIB_SAMPLES      32U
 #define LIS3DSH_EMA_SHIFT          2U
-#define FSM_MOTION_THRESHOLD_MG    1500U  // Lowered from 3000 for easier triggering
+#define FSM_MOTION_THRESHOLD_MG    1500U
 #define FSM_PROXIMITY_THRESHOLD_MM 500U
 #define FSM_LOCK_TIMEOUT_MS        5000U
+
+/* ML-aware FSM tuning */
+#define FSM_ML_MIN_MOTION_GATE_MG   1100U
+#define FSM_ML_ALERT_STREAK_MIN     3U
+#define FSM_ML_LOCK_STREAK_MIN      2U
+
+/* Adaptive ML baseline calibration (ProcessingTask) */
+#define ML_BASELINE_MIN_WINDOWS      20U
+#define ML_BASELINE_ALPHA             0.05f
+#define ML_SCORE_MARGIN               0.030f
+#define ML_SCORE_MARGIN_FLOOR         0.010f
+#define ML_SCORE_MARGIN_CAP           0.120f
 
 #define VL53L1X_I2C_ADDR_7BIT       0x29U
 #define VL53L1X_I2C_ADDR_8BIT       (VL53L1X_I2C_ADDR_7BIT << 1)
@@ -345,6 +360,14 @@ void StartProcessingTask(void *argument)
   /* USER CODE BEGIN ProcessingTask */
   static uint32_t last_motion_mg = 0;
   static uint16_t last_distance_mm = 0;
+  static float last_ml_score = 0.0f;
+  static bool last_ml_anomaly = false;
+  static bool last_ml_anomaly_sustained = false;
+
+  static float ml_baseline_score = 0.0f;
+  static uint32_t ml_baseline_count = 0;
+  static uint32_t ml_streak_count = 0;
+
   char log_buffer[256];
 
   /* Initialize feature extraction module */
@@ -363,11 +386,11 @@ void StartProcessingTask(void *argument)
     SensorSample_t accel_sample;
     DistanceSample_t distance_sample;
     bool data_updated = false;
-    
+
     /* Drain ALL pending accelerometer samples (keep latest) */
     while (osMessageQueueGet(sensorQueueHandle, &accel_sample, NULL, 0) == osOK) {
-      last_motion_mg = (uint32_t)(ABS_I32(accel_sample.x_mg) + 
-                                   ABS_I32(accel_sample.y_mg) + 
+      last_motion_mg = (uint32_t)(ABS_I32(accel_sample.x_mg) +
+                                   ABS_I32(accel_sample.y_mg) +
                                    ABS_I32(accel_sample.z_mg));
       data_updated = true;
 
@@ -378,47 +401,82 @@ void StartProcessingTask(void *argument)
 
       /* Check if feature window is complete */
       if (fe_is_ready()) {
-        /* Log the extracted features */
-        fe_format_features(log_buffer, sizeof(log_buffer));
-        printf("[FE] %s\r\n", log_buffer);
-
-        /* Run ML inference on the extracted features */
         const float *features = fe_get_features();
         ml_inference_result_t ml_result = ml_predict(features);
 
-        /* Log the ML inference result */
-        ml_format_result(&ml_result, log_buffer, sizeof(log_buffer));
-        printf("[ML] %s\r\n", log_buffer);
+        /* Learn baseline only under likely-normal context */
+        bool likely_idle_context = (last_motion_mg < FSM_ML_MIN_MOTION_GATE_MG) &&
+                                   (last_distance_mm == 0U || last_distance_mm > (FSM_PROXIMITY_THRESHOLD_MM + 200U));
+        if (likely_idle_context) {
+          if (ml_baseline_count == 0U) {
+            ml_baseline_score = ml_result.anomaly_score;
+          } else {
+            ml_baseline_score = (1.0f - ML_BASELINE_ALPHA) * ml_baseline_score +
+                                (ML_BASELINE_ALPHA * ml_result.anomaly_score);
+          }
+          ml_baseline_count++;
+        }
 
-        /* TODO: Use ML result to guide FSM decisions
-         * if (ml_result.is_anomaly) {
-         *     fsm_trigger_alert_ml(ml_result.anomaly_score);
-         * } else {
-         *     fsm_trigger_normal();
-         * }
-         */
+        /* Dynamic margin from baseline, bounded to avoid overreaction */
+        float dynamic_margin = ML_SCORE_MARGIN;
+        if (dynamic_margin < ML_SCORE_MARGIN_FLOOR) dynamic_margin = ML_SCORE_MARGIN_FLOOR;
+        if (dynamic_margin > ML_SCORE_MARGIN_CAP) dynamic_margin = ML_SCORE_MARGIN_CAP;
 
-        /* Reset for next window */
+        float dynamic_threshold = ml_get_threshold();
+        if (ml_baseline_count >= ML_BASELINE_MIN_WINDOWS) {
+          dynamic_threshold = ml_baseline_score + dynamic_margin;
+          if (dynamic_threshold > 0.95f) dynamic_threshold = 0.95f;
+        }
+
+        /* Score must exceed dynamic threshold and pass motion gate */
+        bool ml_hit = (ml_result.anomaly_score > dynamic_threshold) &&
+                      (last_motion_mg >= FSM_ML_MIN_MOTION_GATE_MG);
+
+        if (ml_hit) {
+          ml_streak_count++;
+        } else {
+          ml_streak_count = 0U;
+        }
+
+        last_ml_anomaly = ml_hit;
+        last_ml_anomaly_sustained = (ml_streak_count >= FSM_ML_ALERT_STREAK_MIN);
+        last_ml_score = ml_result.anomaly_score;
+
+        /* Compact debug log with adaptive threshold state */
+        printf("[ML] score=%.2f base=%.2f thr=%.2f hit=%u streak=%lu\r\n",
+               last_ml_score,
+               ml_baseline_score,
+               dynamic_threshold,
+               (unsigned int)last_ml_anomaly,
+               (unsigned long)ml_streak_count);
+
+        /* Keep FE log for offline traceability */
+        fe_format_features(log_buffer, sizeof(log_buffer));
+        printf("[FE] %s\r\n", log_buffer);
+
         fe_reset();
       }
     }
-    
+
     /* Drain ALL pending distance samples (keep latest) */
     while (osMessageQueueGet(distanceQueueHandle, &distance_sample, NULL, 0) == osOK) {
       last_distance_mm = distance_sample.distance_mm;
       data_updated = true;
     }
-    
+
     /* Only send fused data if we have new sensor readings */
     if (data_updated) {
       FusedSensorData_t fused = {
         .motion_magnitude_mg = last_motion_mg,
         .distance_mm = last_distance_mm,
+        .ml_score = last_ml_score,
+        .ml_anomaly = last_ml_anomaly,
+        .ml_anomaly_sustained = last_ml_anomaly_sustained,
         .tick = osKernelGetTickCount()
       };
       (void)osMessageQueuePut(processingQueueHandle, &fused, 0U, 0U);
     }
-    
+
     osDelay(20);  /* Poll every 20ms */
   }
   /* USER CODE END ProcessingTask */
@@ -437,78 +495,98 @@ void StartFsmTask(void *argument)
   FsmState_t state = FSM_STATE_IDLE;
   uint32_t state_enter_tick = 0;
   uint32_t alert_count = 0;
-  
+  uint32_t ml_lock_streak = 0;
+
   /* Infinite loop */
   for(;;)
   {
     FusedSensorData_t fused;
     if (osMessageQueueGet(processingQueueHandle, &fused, NULL, osWaitForever) == osOK) {
-      
+
       bool motion_detected = (fused.motion_magnitude_mg > FSM_MOTION_THRESHOLD_MG);
-      bool object_near = (fused.distance_mm > 0 && fused.distance_mm < FSM_PROXIMITY_THRESHOLD_MM);
+      bool object_near = (fused.distance_mm > 0U && fused.distance_mm < FSM_PROXIMITY_THRESHOLD_MM);
+      bool ml_alert = fused.ml_anomaly_sustained;
       uint32_t state_duration = osKernelGetTickCount() - state_enter_tick;
-      
+
       FsmDecision_t decision = {
         .decision = FSM_DECISION_NONE,
         .tick = fused.tick
       };
-      
+
       switch (state) {
         case FSM_STATE_IDLE:
-          if (motion_detected || object_near) {
+          if (motion_detected || object_near || ml_alert) {
             state = FSM_STATE_ALERT;
             state_enter_tick = osKernelGetTickCount();
             alert_count = 0;
+            ml_lock_streak = 0;
             decision.decision = FSM_DECISION_ALERT;
-            printf("[FSM] IDLE -> ALERT (motion=%lu mg, dist=%u mm)\r\n", 
-                   fused.motion_magnitude_mg, fused.distance_mm);
+            printf("[FSM] IDLE -> ALERT (motion=%lu mg, dist=%u mm, ml=%.2f s=%u)\r\n",
+                   (unsigned long)fused.motion_magnitude_mg,
+                   fused.distance_mm,
+                   fused.ml_score,
+                   (unsigned int)ml_alert);
           }
           break;
-          
-        case FSM_STATE_ALERT:
-          if (motion_detected && object_near) {
+
+        case FSM_STATE_ALERT: {
+          bool dual_sensor_threat = motion_detected && object_near;
+          bool ml_supported_threat = ml_alert && (motion_detected || object_near);
+
+          if (dual_sensor_threat || ml_supported_threat) {
             alert_count++;
-            printf("  [FSM] Dual threat: motion=%lu mg, dist=%u mm (count=%lu)\r\n",
-                   fused.motion_magnitude_mg, fused.distance_mm, alert_count);
-            /* Lock after single dual-threat detection (easier to test) */
-            if (alert_count >= 1) {
+
+            if (ml_alert) {
+              ml_lock_streak++;
+            } else {
+              ml_lock_streak = 0U;
+            }
+
+            printf("  [FSM] Threat keepalive: motion=%lu dist=%u ml=%.2f (count=%lu ml_streak=%lu)\r\n",
+                   (unsigned long)fused.motion_magnitude_mg,
+                   fused.distance_mm,
+                   fused.ml_score,
+                   (unsigned long)alert_count,
+                   (unsigned long)ml_lock_streak);
+
+            if (dual_sensor_threat || ml_lock_streak >= FSM_ML_LOCK_STREAK_MIN) {
               state = FSM_STATE_LOCK;
               state_enter_tick = osKernelGetTickCount();
               decision.decision = FSM_DECISION_LOCK;
-              printf("[FSM] ALERT -> LOCK (sustained threat)\r\n");
+              printf("[FSM] ALERT -> LOCK (threat escalation)\r\n");
             } else {
               decision.decision = FSM_DECISION_ALERT;
             }
-          } else if (!motion_detected && !object_near) {
-            /* Threat cleared */
+          } else if (!motion_detected && !object_near && !ml_alert) {
             state = FSM_STATE_IDLE;
             state_enter_tick = osKernelGetTickCount();
             decision.decision = FSM_DECISION_NONE;
+            ml_lock_streak = 0U;
             printf("[FSM] ALERT -> IDLE (threat cleared)\r\n");
           } else {
             decision.decision = FSM_DECISION_ALERT;
             alert_count = 0;
+            ml_lock_streak = 0U;
           }
           break;
-          
+        }
+
         case FSM_STATE_LOCK:
           if (state_duration > FSM_LOCK_TIMEOUT_MS) {
-            /* Timeout: return to IDLE */
             state = FSM_STATE_IDLE;
             state_enter_tick = osKernelGetTickCount();
             decision.decision = FSM_DECISION_NONE;
             printf("[FSM] LOCK -> IDLE (timeout)\r\n");
           } else {
-            /* Sustain lock */
             decision.decision = FSM_DECISION_LOCK;
           }
           break;
-          
+
         default:
           state = FSM_STATE_IDLE;
           break;
       }
-      
+
       (void)osMessageQueuePut(outputQueueHandle, &decision, 0U, 0U);
     }
   }
