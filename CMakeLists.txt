@@ -41,6 +41,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/actuator_driver.c
     Core/Src/feature_extraction.c
     Core/Src/ml_model.c
+    Core/Src/generated_iforest_model.c
 )
 
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE

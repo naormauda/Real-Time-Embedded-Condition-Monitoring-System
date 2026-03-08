@@ -14,6 +14,7 @@
  */
 
 #include "ml_model.h"
+#include "generated_iforest_model.h"
 #include <stdio.h>
 #include <math.h>
 #include <string.h>
@@ -32,6 +33,9 @@ typedef struct {
 
 static ml_context_t g_ml = {0};
 
+/* Generated backend is preferred once model artifacts are exported. */
+#define ML_USE_GENERATED_IFOREST 1
+
 /*============================================================================
  * Internal Helpers
  ============================================================================*/
@@ -39,13 +43,9 @@ static ml_context_t g_ml = {0};
 /**
  * @brief Stub anomaly scoring function
  *
- * This is TEMPORARY - will be replaced with actual ML model.
- * Currently uses a simple heuristic-based approach for testing:
- *   - High variance + high peak-to-peak = likely anomaly
- *   - Low variance + low peak-to-peak = likely normal
- *
- * TODO: Replace with actual TensorFlow Lite inference
+ * This is retained as a fallback path when the generated backend is disabled.
  */
+#if !ML_USE_GENERATED_IFOREST
 static float ml_score_anomaly_stub(const float *features) {
     /*
      * Features layout:
@@ -100,6 +100,7 @@ static float ml_score_anomaly_stub(const float *features) {
 
     return fminf(1.0f, fmaxf(0.0f, score)); /* Clamp to [0, 1] */
 }
+#endif
 
 /*============================================================================
  * Public API Implementation
@@ -108,7 +109,13 @@ static float ml_score_anomaly_stub(const float *features) {
 ml_error_t ml_init(void) {
     memset(&g_ml, 0, sizeof(g_ml));
     g_ml.is_initialized = true;
+
+#if ML_USE_GENERATED_IFOREST
+    g_ml.threshold = iforest_generated_default_threshold();
+#else
     g_ml.threshold = ML_ANOMALY_THRESHOLD_DEFAULT;
+#endif
+
     return ML_OK;
 }
 
@@ -141,8 +148,12 @@ ml_inference_result_t ml_predict(const float *features) {
      * For now, use a fixed estimate */
     result.inference_time_ms = 5; /* Estimate: 5ms for this stub */
 
-    /* Compute anomaly score (STUB - will be replaced with actual model) */
+    /* Compute anomaly score from active backend */
+#if ML_USE_GENERATED_IFOREST
+    result.anomaly_score = iforest_generated_predict(features);
+#else
     result.anomaly_score = ml_score_anomaly_stub(features);
+#endif
 
     /* Apply threshold to make binary decision */
     result.is_anomaly = (result.anomaly_score > g_ml.threshold);
@@ -189,7 +200,12 @@ ml_error_t ml_get_status(ml_model_status_t *status) {
     }
 
     status->peak_inference_time_ms = g_ml.peak_inference_time_ms;
-    status->model_name = "stub_heuristic_v1"; /* Placeholder name */
+
+#if ML_USE_GENERATED_IFOREST
+    status->model_name = iforest_generated_name();
+#else
+    status->model_name = "stub_heuristic_v1";
+#endif
 
     return ML_OK;
 }

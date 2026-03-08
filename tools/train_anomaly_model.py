@@ -91,7 +91,7 @@ class AnomalyModelTrainer:
 
         return X, y, y_binary
 
-    def train_isolation_forest(self, X, y_binary, contamination=0.1):
+    def train_isolation_forest(self, X, y_binary, contamination=0.1, fit_normal_only=True):
         """
         Train Isolation Forest anomaly detector
 
@@ -100,11 +100,22 @@ class AnomalyModelTrainer:
             y_binary: Binary labels (0=normal, 1=anomaly)
             contamination: Expected proportion of anomalies
         """
-        print(f"Training Isolation Forest (contamination={contamination})...")
+        mode = "NORMAL-only" if fit_normal_only else "all-data"
+        print(f"Training Isolation Forest (contamination={contamination}, mode={mode})...")
 
         # Normalize features
         self.scaler = StandardScaler()
-        X_scaled = self.scaler.fit_transform(X)
+        if fit_normal_only:
+            X_train = X[y_binary == 0]
+            if X_train.shape[0] == 0:
+                raise ValueError("No NORMAL samples found. Cannot fit one-class anomaly model.")
+            self.scaler.fit(X_train)
+            X_train_scaled = self.scaler.transform(X_train)
+        else:
+            X_train_scaled = self.scaler.fit_transform(X)
+
+        # Always evaluate on the full dataset
+        X_scaled = self.scaler.transform(X)
 
         # Train model
         self.model = IsolationForest(
@@ -112,7 +123,7 @@ class AnomalyModelTrainer:
             random_state=42,
             n_estimators=100
         )
-        self.model.fit(X_scaled)
+        self.model.fit(X_train_scaled)
 
         # Get predictions (anomaly_score: negative for anomalies, positive for normal)
         y_pred_score = -self.model.score_samples(X_scaled)  # Flip for intuitive range
@@ -122,9 +133,12 @@ class AnomalyModelTrainer:
         # Evaluate
         self._evaluate(y_binary, y_pred_binary, y_pred_score)
 
+        pred_anomaly_rate = float(np.mean(y_pred_binary))
+        print(f"Predicted anomaly rate: {pred_anomaly_rate:.1%}")
+
         print(f"{Colors.OKGREEN}✓ Training complete{Colors.ENDC}\n")
 
-    def train_one_class_svm(self, X, y_binary, nu=0.1):
+    def train_one_class_svm(self, X, y_binary, nu=0.1, fit_normal_only=True):
         """
         Train One-Class SVM anomaly detector
 
@@ -133,15 +147,26 @@ class AnomalyModelTrainer:
             y_binary: Binary labels
             nu: Upper bound on fraction of training data as outliers
         """
-        print(f"Training One-Class SVM (nu={nu})...")
+        mode = "NORMAL-only" if fit_normal_only else "all-data"
+        print(f"Training One-Class SVM (nu={nu}, mode={mode})...")
 
         # Normalize features
         self.scaler = StandardScaler()
-        X_scaled = self.scaler.fit_transform(X)
+        if fit_normal_only:
+            X_train = X[y_binary == 0]
+            if X_train.shape[0] == 0:
+                raise ValueError("No NORMAL samples found. Cannot fit one-class anomaly model.")
+            self.scaler.fit(X_train)
+            X_train_scaled = self.scaler.transform(X_train)
+        else:
+            X_train_scaled = self.scaler.fit_transform(X)
+
+        # Always evaluate on the full dataset
+        X_scaled = self.scaler.transform(X)
 
         # Train model
         self.model = OneClassSVM(kernel='rbf', gamma='auto', nu=nu)
-        self.model.fit(X_scaled)
+        self.model.fit(X_train_scaled)
 
         # Get predictions
         y_pred = self.model.predict(X_scaled)  # +1 for normal, -1 for anomaly
@@ -150,6 +175,9 @@ class AnomalyModelTrainer:
 
         # Evaluate
         self._evaluate(y_binary, y_pred_binary, y_pred_score)
+
+        pred_anomaly_rate = float(np.mean(y_pred_binary))
+        print(f"Predicted anomaly rate: {pred_anomaly_rate:.1%}")
 
         print(f"{Colors.OKGREEN}✓ Training complete{Colors.ENDC}\n")
 
@@ -252,6 +280,8 @@ def main():
     parser.add_argument('--output', default='models', help='Output directory for models')
     parser.add_argument('--contamination', type=float, default=0.15,
                        help='Expected anomaly fraction (for Isolation Forest)')
+    parser.add_argument('--fit-all-data', action='store_true',
+                       help='Fit one-class model on all samples instead of NORMAL-only')
 
     args = parser.parse_args()
 
@@ -260,11 +290,29 @@ def main():
     # Load data
     X, y, y_binary = trainer.load_data(args.data)
 
+    normal_ratio = float(np.mean(y_binary == 0))
+    anomaly_ratio = float(np.mean(y_binary == 1))
+    print(f"Normal ratio: {normal_ratio:.1%} | Anomaly ratio: {anomaly_ratio:.1%}")
+    if anomaly_ratio > 0.5 and not args.fit_all_data:
+        print("Dataset is anomaly-heavy; NORMAL-only fitting enabled (recommended for one-class models).")
+    elif anomaly_ratio > 0.5 and args.fit_all_data:
+        print("Warning: anomaly-heavy dataset + all-data fitting can severely reduce recall.")
+
     # Train model
     if args.algorithm == 'isolation_forest':
-        trainer.train_isolation_forest(X, y_binary, contamination=args.contamination)
+        trainer.train_isolation_forest(
+            X,
+            y_binary,
+            contamination=args.contamination,
+            fit_normal_only=(not args.fit_all_data)
+        )
     elif args.algorithm == 'one_class_svm':
-        trainer.train_one_class_svm(X, y_binary, nu=args.contamination)
+        trainer.train_one_class_svm(
+            X,
+            y_binary,
+            nu=args.contamination,
+            fit_normal_only=(not args.fit_all_data)
+        )
 
     # Save model
     trainer.save_model(args.algorithm)

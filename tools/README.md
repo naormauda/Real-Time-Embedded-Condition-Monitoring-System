@@ -17,9 +17,9 @@ The complete ML training pipeline:
                 ↓
 4. Evaluate Performance → Metrics & Confusion Matrix
                 ↓
-5. Convert to TFLite    → [TODO] convert_to_tflite.py
+5. Export to Embedded C → export_iforest_to_c.py
                 ↓
-6. Deploy to Device     → Replace ml_model.c stub
+6. Deploy to Device     → Build firmware with generated_iforest_model.c
 ```
 
 ---
@@ -205,17 +205,28 @@ models/
 
 ---
 
-## 3. Next Steps: Converting to TensorFlow Lite
+## 3. Export Trained Model to Embedded C
 
-[TODO] Tool to convert sklearn models to TensorFlow Lite Micro format for embedded deployment.
+Use the exporter to generate deployable C artifacts directly from sklearn model + scaler:
 
-Expected process:
-1. Export sklearn model to ONNX intermediate format
-2. Convert ONNX → TensorFlow Lite
-3. Quantize to int8 for minimal size
-4. Generate C code for STM32 embedding
+```bash
+python3 export_iforest_to_c.py \
+  --model models/isolation_forest.pkl \
+  --scaler models/isolation_forest_scaler.pkl \
+  --calibration-data training_data/training_data_combined.csv \
+  --project-root ..
+```
 
-Target model size: 15-30 KB (well within remaining 46 KB budget)
+Generated files:
+- `Core/Inc/generated_iforest_model.h`
+- `Core/Src/generated_iforest_model.c`
+
+Notes:
+- The exporter applies scaler mean/scale and emits tree arrays for all estimators.
+- It calibrates a default threshold from labeled data (best F1).
+- Runtime now uses this generated backend through `ml_model.c`.
+
+TensorFlow Lite conversion remains optional for future work if you prefer a TFLM backend.
 
 ---
 
@@ -224,9 +235,8 @@ Target model size: 15-30 KB (well within remaining 46 KB budget)
 After training is complete:
 
 - [ ] Review model metrics (Recall >90%, Precision >80%)
-- [ ] Export model to TensorFlow Lite format
-- [ ] Convert TFLite to C array for embedded code
-- [ ] Replace stub in `ml_model.c` with actual inference code
+- [ ] Export trained model to embedded C (`export_iforest_to_c.py`)
+- [ ] Verify generated model build and flash on target
 - [ ] Test inference timing on device (<50ms budget)
 - [ ] Validate with real-world normal/anomaly scenarios
 - [ ] Adjust anomaly threshold if needed

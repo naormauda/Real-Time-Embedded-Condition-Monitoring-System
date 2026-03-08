@@ -212,8 +212,9 @@ SensorTask (10ms)          DistanceTask (50ms)
 🟢 Stage 4 – RTOS Integration **COMPLETED**  
 🟢 Stage 5 – Actuator Control **COMPLETED** (Phase 1)  
 🟢 Stage 5 – ML Feature Extraction **COMPLETED** (Phase 2)  
-� Stage 5 – ML Inference API **COMPLETED** (Phase 3a)  
-🟡 Stage 5 – Training Data & Model (Phase 3b - In Progress)
+🟢 Stage 5 – ML Inference API **COMPLETED** (Phase 3a)  
+🟢 Stage 5 – Training Data & Model **COMPLETED** (Phase 3b)  
+🟡 Stage 5 – Embedded Model Deployment (Phase 3c - In Progress)
 
 **Completed (Stage 4 - RTOS Integration):**
 - ✅ Clock tree configuration (250 MHz via PLL)
@@ -322,7 +323,7 @@ SensorTask (10ms)          DistanceTask (50ms)
   - Binary size: 135.7KB (from 134.3KB, +1.4KB for ML API)
   - -lm (math library) already linked from Phase 2
 
-**Current Status (Stage 5 - Phase 3b - In Progress):**
+**Current Status (Stage 5 - Phase 3c - In Progress):**
 - ✅ Training data collection tool (`tools/collect_training_data.py`)
   - Serial interface to NUCLEO board
   - Interactive scenario labeling (NORMAL/VIBRATION/TAMPERING)
@@ -341,7 +342,23 @@ SensorTask (10ms)          DistanceTask (50ms)
   - Success criteria and troubleshooting
   - Deployment checklist
 
-- 🔄 Next: Execute data collection → model training → TFLite conversion
+- ✅ Offline training completed on collected dataset
+  - Accuracy: 92.6%
+  - Precision: 96.2%
+  - Recall: 94.7%
+  - F1 Score: 0.955
+
+- ✅ Embedded model artifacts generated from trained model
+  - `Core/Inc/generated_iforest_model.h`
+  - `Core/Src/generated_iforest_model.c`
+  - Export tool: `tools/export_iforest_to_c.py`
+  - Calibrated default threshold: 0.545
+
+- ✅ Runtime backend switched from stub to generated model
+  - `ml_model.c` now calls generated Isolation Forest backend
+  - Build includes `generated_iforest_model.c`
+
+- 🔄 Next: integrate ML decisions into FSM and validate on hardware
 
 **Known Deferred Tasks:**
 - ⏳ Servo external power supply (requires 5V source, not NUCLEO 5V) - Phase 4
