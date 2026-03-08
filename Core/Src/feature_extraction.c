@@ -63,7 +63,8 @@ static inline float compute_mean(float sum, uint32_t count) {
 static inline float compute_variance(float sum, float sum_sq, uint32_t count) {
     if (count <= 1) return 0.0f;
     float mean = sum / count;
-    return (sum_sq / count) - (mean * mean);
+    float var = (sum_sq / count) - (mean * mean);
+    return (var > 0.0f) ? var : 0.0f;
 }
 
 /**

@@ -12,7 +12,8 @@ The generated C backend performs:
   3) Anomaly score computation in [0, 1]
 
 Optional calibration:
-  - If a labeled CSV is provided, this script computes a threshold that maximizes F1.
+    - If a labeled CSV is provided, this script computes threshold from NORMAL-score
+        quantile to meet a target false-positive rate (more stable on imbalanced data).
 """
 
 from __future__ import annotations
@@ -107,6 +108,45 @@ def find_best_threshold(scores: np.ndarray, labels: np.ndarray) -> Tuple[float, 
     return best_thr, best_metrics
 
 
+def find_threshold_by_target_fpr(
+    scores: np.ndarray,
+    labels: np.ndarray,
+    target_fpr: float,
+) -> Tuple[float, dict]:
+    # labels: 0=normal, 1=anomaly
+    normal_scores = scores[labels == 0]
+    if normal_scores.size == 0:
+        raise ValueError("No NORMAL samples available for FPR calibration")
+
+    # Keep approximately (1-target_fpr) of normal samples below threshold.
+    q = float(np.clip(1.0 - target_fpr, 0.0, 1.0))
+    threshold = float(np.quantile(normal_scores, q))
+
+    pred = (scores > threshold).astype(np.int32)
+    tp = int(np.sum((pred == 1) & (labels == 1)))
+    tn = int(np.sum((pred == 0) & (labels == 0)))
+    fp = int(np.sum((pred == 1) & (labels == 0)))
+    fn = int(np.sum((pred == 0) & (labels == 1)))
+
+    precision = tp / (tp + fp) if (tp + fp) else 0.0
+    recall = tp / (tp + fn) if (tp + fn) else 0.0
+    fpr = fp / (fp + tn) if (fp + tn) else 0.0
+    tpr = recall
+    f1 = (2.0 * precision * recall / (precision + recall)) if (precision + recall) else 0.0
+
+    return threshold, {
+        "precision": precision,
+        "recall": recall,
+        "f1": f1,
+        "fpr": fpr,
+        "tpr": tpr,
+        "tp": tp,
+        "tn": tn,
+        "fp": fp,
+        "fn": fn,
+    }
+
+
 def model_score_samples(
     trees: List[TreeExport],
     x_scaled: np.ndarray,
@@ -148,6 +188,12 @@ def main() -> int:
         "--project-root",
         default="..",
         help="Project root path (default: .. from tools)",
+    )
+    parser.add_argument(
+        "--target-fpr",
+        type=float,
+        default=0.05,
+        help="Target false-positive rate on NORMAL class for threshold calibration",
     )
     args = parser.parse_args()
 
@@ -191,11 +237,20 @@ def main() -> int:
         x_scaled = scaler.transform(x)
         scores = model_score_samples(trees, x_scaled, c_n)
 
-        threshold, metrics = find_best_threshold(scores, y)
+        target_fpr = float(np.clip(args.target_fpr, 0.0, 0.5))
+        try:
+            threshold, metrics = find_threshold_by_target_fpr(scores, y, target_fpr)
+            method = "target_fpr"
+        except ValueError:
+            threshold, metrics = find_best_threshold(scores, y)
+            method = "best_f1_fallback"
+
         calibration_summary = {
             "used": True,
+            "method": method,
             "threshold": threshold,
             "metrics": metrics,
+            "target_fpr": target_fpr,
             "samples": int(len(df)),
         }
 
