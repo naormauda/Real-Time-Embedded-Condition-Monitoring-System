@@ -20,6 +20,8 @@ This is **not a gadget** and **not a demo-only project** —
 it is a structured embedded system intended to demonstrate professional
 real-time embedded design practices.
 
+Resume polish checklist: see `RESUME_READY_CHECKLIST.md`
+
 ---
 
 ## 🎯 Motivation
