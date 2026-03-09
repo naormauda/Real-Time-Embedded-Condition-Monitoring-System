@@ -21,8 +21,8 @@ Status legend:
 
 | ID | Item | Status | Acceptance Criteria | Evidence |
 |---|---|---|---|---|
-| R1 | Test report | TODO | A single markdown report summarizes unit/integration tests, pass/fail counts, and key scenarios. | `docs/validation_report.md` |
-| R2 | Hardware validation matrix | TODO | Matrix covers normal operation, tamper scenario, reboot/recovery, sensor disconnect/fault, and lock/unlock behavior. | `docs/hardware_validation_matrix.md` |
+| R1 | Test report | DONE | A single markdown report summarizes unit/integration tests, pass/fail counts, and key scenarios. | `docs/validation_report.md` |
+| R2 | Hardware validation matrix | DONE | Matrix covers normal operation, tamper scenario, reboot/recovery, sensor disconnect/fault, and lock/unlock behavior. | `docs/hardware_validation_matrix.md` |
 | R3 | Fault handling policy | TODO | Behavior is documented for I2C failure, ToF invalid samples, OLED failure, and auth lockout edge cases. | `docs/fault_handling.md` |
 | R4 | Watchdog + fail-safe note | TODO | README states watchdog strategy and exact fail-safe actions on task stall/system fault. | `README.md` section link |
 | R5 | Static analysis snapshot | TODO | Run static analysis and record high-severity findings plus fixes/justification. | `docs/static_analysis.md` |
