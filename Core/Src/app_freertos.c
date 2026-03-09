@@ -33,6 +33,8 @@
 #include "actuator_driver.h"
 #include "feature_extraction.h"
 #include "ml_model.h"
+#include "security_policy.h"
+#include "display_task.h"
 
 /* USER CODE END Includes */
 
@@ -86,17 +88,23 @@ typedef struct {
 #define PROCESSING_QUEUE_LENGTH    16U
 #define OUTPUT_QUEUE_LENGTH        8U
 #define DISTANCE_QUEUE_LENGTH      16U
+#define AUTH_QUEUE_LENGTH          8U
 
 #define LIS3DSH_CALIB_SAMPLES      32U
 #define LIS3DSH_EMA_SHIFT          2U
 #define FSM_MOTION_THRESHOLD_MG    1500U
 #define FSM_PROXIMITY_THRESHOLD_MM 500U
+#define FSM_PROXIMITY_STREAK_MIN   3U
+#define FSM_PROXIMITY_STARTUP_GRACE_MS 3000U
+#define FSM_PROXIMITY_MOTION_GATE_MG 1100U
 #define FSM_LOCK_TIMEOUT_MS        5000U
+#define FSM_ALERT_DUAL_STREAK_MIN  5U
+#define FSM_ALERT_MIN_DWELL_MS     1500U
 
 /* ML-aware FSM tuning */
 #define FSM_ML_MIN_MOTION_GATE_MG   1100U
 #define FSM_ML_ALERT_STREAK_MIN     3U
-#define FSM_ML_LOCK_STREAK_MIN      2U
+#define FSM_ML_LOCK_STREAK_MIN      3U
 
 /* Adaptive ML baseline calibration (ProcessingTask) */
 #define ML_BASELINE_MIN_WINDOWS      20U
@@ -105,12 +113,25 @@ typedef struct {
 #define ML_SCORE_MARGIN_FLOOR         0.010f
 #define ML_SCORE_MARGIN_CAP           0.120f
 
+/* Security policy tuning */
+#define SECURITY_AUTH_SESSION_MS       30000U
+#define SECURITY_UNLOCK_QUIET_MS       2000U
+
 #define VL53L1X_I2C_ADDR_7BIT       0x29U
 #define VL53L1X_I2C_ADDR_8BIT       (VL53L1X_I2C_ADDR_7BIT << 1)
 #define VL53L1X_TIMING_BUDGET_US    50000U
 #define VL53L1X_INTERMEASUREMENT_MS 100U
+#define DISTANCE_MEDIAN_WINDOW       3U
 
 #define ABS_I32(x)                 ((int32_t)((x) < 0 ? -(x) : (x)))
+
+static uint16_t median3_u16(uint16_t a, uint16_t b, uint16_t c)
+{
+  if (a > b) { uint16_t t = a; a = b; b = t; }
+  if (b > c) { uint16_t t = b; b = c; c = t; }
+  if (a > b) { uint16_t t = a; a = b; b = t; }
+  return b;
+}
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -130,6 +151,7 @@ static osMessageQueueId_t sensorQueueHandle;
 static osMessageQueueId_t processingQueueHandle;
 static osMessageQueueId_t outputQueueHandle;
 static osMessageQueueId_t distanceQueueHandle;
+static osMessageQueueId_t authQueueHandle;
 
 static LIS3DSH_Handle_t lis3dsh;
 static const LIS3DSH_Config_t lis3dsh_config = {
@@ -143,6 +165,8 @@ static const LIS3DSH_Config_t lis3dsh_config = {
 };
 
 static VL53L1_Dev_t vl53l1_dev;
+
+extern UART_HandleTypeDef huart3;
 /* USER CODE END Variables */
 /* Definitions for defaultTask */
 osThreadId_t defaultTaskHandle;
@@ -186,11 +210,19 @@ const osThreadAttr_t DistanceTask_attributes = {
   .priority = (osPriority_t) osPriorityAboveNormal,
   .stack_size = 512 * 4
 };
+/* Definitions for AuthTask */
+osThreadId_t AuthTaskHandle;
+const osThreadAttr_t AuthTask_attributes = {
+  .name = "AuthTask",
+  .priority = (osPriority_t) osPriorityBelowNormal,
+  .stack_size = 512 * 4
+};
 
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
 static void LogRtosHealth(void);
 void StartDistanceTask(void *argument);
+void StartAuthTask(void *argument);
 
 /* USER CODE END FunctionPrototypes */
 
@@ -206,6 +238,10 @@ void MX_FREERTOS_Init(void) {
     printf("ERROR: Actuator initialization failed!\r\n");
   } else {
     printf("Actuator driver initialized successfully\r\n");
+  }
+
+  if (!security_policy_init()) {
+    printf("[SEC] ERROR: security policy init failed\r\n");
   }
   /* USER CODE END Init */
 
@@ -226,6 +262,7 @@ void MX_FREERTOS_Init(void) {
   processingQueueHandle = osMessageQueueNew(PROCESSING_QUEUE_LENGTH, sizeof(FusedSensorData_t), NULL);
   outputQueueHandle = osMessageQueueNew(OUTPUT_QUEUE_LENGTH, sizeof(FsmDecision_t), NULL);
   distanceQueueHandle = osMessageQueueNew(DISTANCE_QUEUE_LENGTH, sizeof(DistanceSample_t), NULL);
+  authQueueHandle = osMessageQueueNew(AUTH_QUEUE_LENGTH, sizeof(uint32_t), NULL);
   /* USER CODE END RTOS_QUEUES */
   /* creation of defaultTask */
   defaultTaskHandle = osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
@@ -245,6 +282,13 @@ void MX_FREERTOS_Init(void) {
   /* USER CODE BEGIN RTOS_THREADS */
   /* creation of DistanceTask */
   DistanceTaskHandle = osThreadNew(StartDistanceTask, NULL, &DistanceTask_attributes);
+  /* creation of AuthTask */
+  AuthTaskHandle = osThreadNew(StartAuthTask, NULL, &AuthTask_attributes);
+  
+  /* creation of DisplayTask */
+  if (!display_task_start(&hi2c1)) {
+    printf("[APP] WARNING: DisplayTask creation failed\r\n");
+  }
   /* USER CODE END RTOS_THREADS */
 
   /* USER CODE BEGIN RTOS_EVENTS */
@@ -363,6 +407,9 @@ void StartProcessingTask(void *argument)
   static float last_ml_score = 0.0f;
   static bool last_ml_anomaly = false;
   static bool last_ml_anomaly_sustained = false;
+  static int32_t last_accel_x = 0;
+  static int32_t last_accel_y = 0;
+  static int32_t last_accel_z = 0;
 
   static float ml_baseline_score = 0.0f;
   static uint32_t ml_baseline_count = 0;
@@ -389,6 +436,9 @@ void StartProcessingTask(void *argument)
 
     /* Drain ALL pending accelerometer samples (keep latest) */
     while (osMessageQueueGet(sensorQueueHandle, &accel_sample, NULL, 0) == osOK) {
+      last_accel_x = accel_sample.x_mg;
+      last_accel_y = accel_sample.y_mg;
+      last_accel_z = accel_sample.z_mg;
       last_motion_mg = (uint32_t)(ABS_I32(accel_sample.x_mg) +
                                    ABS_I32(accel_sample.y_mg) +
                                    ABS_I32(accel_sample.z_mg));
@@ -442,6 +492,9 @@ void StartProcessingTask(void *argument)
         last_ml_anomaly_sustained = (ml_streak_count >= FSM_ML_ALERT_STREAK_MIN);
         last_ml_score = ml_result.anomaly_score;
 
+        /* Update display with ML inference result */
+        display_state_update_ml(last_ml_score, last_ml_anomaly, ml_result.inference_time_ms);
+
         /* Compact debug log with adaptive threshold state */
         printf("[ML] score=%.2f base=%.2f thr=%.2f hit=%u streak=%lu\r\n",
                last_ml_score,
@@ -463,6 +516,10 @@ void StartProcessingTask(void *argument)
       last_distance_mm = distance_sample.distance_mm;
       data_updated = true;
     }
+
+    /* Update display with sensor readings */
+    display_state_update_sensors(last_accel_x, last_accel_y, last_accel_z, 
+                                  last_motion_mg, last_distance_mm);
 
     /* Only send fused data if we have new sensor readings */
     if (data_updated) {
@@ -493,9 +550,13 @@ void StartFsmTask(void *argument)
 {
   /* USER CODE BEGIN FsmTask */
   FsmState_t state = FSM_STATE_IDLE;
+  uint32_t fsm_boot_tick = osKernelGetTickCount();
   uint32_t state_enter_tick = 0;
   uint32_t alert_count = 0;
   uint32_t ml_lock_streak = 0;
+  uint32_t proximity_streak = 0;
+  uint32_t last_threat_tick = 0;
+  uint32_t auth_session_expire_tick = 0;
 
   /* Infinite loop */
   for(;;)
@@ -503,10 +564,36 @@ void StartFsmTask(void *argument)
     FusedSensorData_t fused;
     if (osMessageQueueGet(processingQueueHandle, &fused, NULL, osWaitForever) == osOK) {
 
+      uint32_t auth_tick = 0;
+      while (osMessageQueueGet(authQueueHandle, &auth_tick, NULL, 0U) == osOK) {
+        auth_session_expire_tick = auth_tick + SECURITY_AUTH_SESSION_MS;
+        display_state_update_auth(true, auth_session_expire_tick, 0);
+        printf("[SEC] Auth session opened for %lu ms\r\n", (unsigned long)SECURITY_AUTH_SESSION_MS);
+      }
+
       bool motion_detected = (fused.motion_magnitude_mg > FSM_MOTION_THRESHOLD_MG);
-      bool object_near = (fused.distance_mm > 0U && fused.distance_mm < FSM_PROXIMITY_THRESHOLD_MM);
+      bool raw_object_near = (fused.distance_mm > 0U && fused.distance_mm < FSM_PROXIMITY_THRESHOLD_MM);
+      if (raw_object_near) {
+        if (proximity_streak < 1000U) {
+          proximity_streak++;
+        }
+      } else {
+        proximity_streak = 0U;
+      }
+      bool object_near = (proximity_streak >= FSM_PROXIMITY_STREAK_MIN);
       bool ml_alert = fused.ml_anomaly_sustained;
-      uint32_t state_duration = osKernelGetTickCount() - state_enter_tick;
+      uint32_t now = osKernelGetTickCount();
+      bool startup_grace_active = (now - fsm_boot_tick) < FSM_PROXIMITY_STARTUP_GRACE_MS;
+      if (startup_grace_active) {
+        object_near = false;
+      }
+      bool proximity_supported = object_near && (fused.motion_magnitude_mg >= FSM_PROXIMITY_MOTION_GATE_MG);
+      uint32_t state_duration = now - state_enter_tick;
+      bool auth_session_active = (auth_session_expire_tick != 0U) && (now < auth_session_expire_tick);
+
+      if (motion_detected || proximity_supported || ml_alert) {
+        last_threat_tick = now;
+      }
 
       FsmDecision_t decision = {
         .decision = FSM_DECISION_NONE,
@@ -515,23 +602,26 @@ void StartFsmTask(void *argument)
 
       switch (state) {
         case FSM_STATE_IDLE:
-          if (motion_detected || object_near || ml_alert) {
+          if (motion_detected || proximity_supported || ml_alert) {
             state = FSM_STATE_ALERT;
-            state_enter_tick = osKernelGetTickCount();
+            state_enter_tick = now;
+            display_state_update_fsm(FSM_STATE_ALERT, state_enter_tick);
             alert_count = 0;
             ml_lock_streak = 0;
             decision.decision = FSM_DECISION_ALERT;
-            printf("[FSM] IDLE -> ALERT (motion=%lu mg, dist=%u mm, ml=%.2f s=%u)\r\n",
+            printf("[FSM] IDLE -> ALERT (motion=%lu mg, dist=%u mm, prox_sup=%u, ml=%.2f s=%u)\r\n",
                    (unsigned long)fused.motion_magnitude_mg,
                    fused.distance_mm,
+                   (unsigned int)proximity_supported,
                    fused.ml_score,
                    (unsigned int)ml_alert);
           }
           break;
 
         case FSM_STATE_ALERT: {
-          bool dual_sensor_threat = motion_detected && object_near;
-          bool ml_supported_threat = ml_alert && (motion_detected || object_near);
+          bool dual_sensor_threat = motion_detected && proximity_supported;
+          bool ml_supported_threat = ml_alert && (motion_detected || proximity_supported);
+          bool alert_dwell_ok = state_duration >= FSM_ALERT_MIN_DWELL_MS;
 
           if (dual_sensor_threat || ml_supported_threat) {
             alert_count++;
@@ -549,19 +639,35 @@ void StartFsmTask(void *argument)
                    (unsigned long)alert_count,
                    (unsigned long)ml_lock_streak);
 
-            if (dual_sensor_threat || ml_lock_streak >= FSM_ML_LOCK_STREAK_MIN) {
+            bool dual_sensor_escalate = dual_sensor_threat &&
+                                        (alert_count >= FSM_ALERT_DUAL_STREAK_MIN) &&
+                                        alert_dwell_ok;
+            bool ml_escalate = (ml_lock_streak >= FSM_ML_LOCK_STREAK_MIN) && alert_dwell_ok;
+
+            if (dual_sensor_escalate || ml_escalate) {
               state = FSM_STATE_LOCK;
-              state_enter_tick = osKernelGetTickCount();
+              state_enter_tick = now;
+              display_state_update_fsm(FSM_STATE_LOCK, state_enter_tick);
               decision.decision = FSM_DECISION_LOCK;
+              uint16_t lock_reason_flags = 0U;
+              if (dual_sensor_escalate) {
+                lock_reason_flags |= 0x0001U;
+              }
+              if (ml_escalate) {
+                lock_reason_flags |= 0x0002U;
+              }
+              security_policy_note_lock_enter(now, lock_reason_flags);
               printf("[FSM] ALERT -> LOCK (threat escalation)\r\n");
             } else {
               decision.decision = FSM_DECISION_ALERT;
             }
-          } else if (!motion_detected && !object_near && !ml_alert) {
+          } else if (!motion_detected && !proximity_supported && !ml_alert) {
             state = FSM_STATE_IDLE;
-            state_enter_tick = osKernelGetTickCount();
+            state_enter_tick = now;
+            display_state_update_fsm(FSM_STATE_IDLE, state_enter_tick);
             decision.decision = FSM_DECISION_NONE;
             ml_lock_streak = 0U;
+            proximity_streak = 0U;
             printf("[FSM] ALERT -> IDLE (threat cleared)\r\n");
           } else {
             decision.decision = FSM_DECISION_ALERT;
@@ -572,11 +678,17 @@ void StartFsmTask(void *argument)
         }
 
         case FSM_STATE_LOCK:
-          if (state_duration > FSM_LOCK_TIMEOUT_MS) {
+          /* Fail-secure policy: only release lock when operator is authenticated and threat stayed quiet. */
+          bool quiet_long_enough = (now - last_threat_tick) >= SECURITY_UNLOCK_QUIET_MS;
+          if (state_duration > FSM_LOCK_TIMEOUT_MS && quiet_long_enough && auth_session_active) {
             state = FSM_STATE_IDLE;
-            state_enter_tick = osKernelGetTickCount();
+            state_enter_tick = now;
+            display_state_update_fsm(FSM_STATE_IDLE, state_enter_tick);
             decision.decision = FSM_DECISION_NONE;
-            printf("[FSM] LOCK -> IDLE (timeout)\r\n");
+            auth_session_expire_tick = 0U;
+            display_state_update_auth(false, 0, 0);
+            security_policy_note_lock_clear(now);
+            printf("[FSM] LOCK -> IDLE (authenticated clear)\r\n");
           } else {
             decision.decision = FSM_DECISION_LOCK;
           }
@@ -605,6 +717,10 @@ void StartOutputTask(void *argument)
   /* USER CODE BEGIN OutputTask */
   FsmDecisionType_t last_decision = FSM_DECISION_NONE;
   uint32_t buzzer_update_counter = 0;
+
+  /* Ensure boot state is visibly IDLE even before first FSM queue message. */
+  Actuator_SetState(ACTUATOR_STATE_IDLE);
+  printf("  [OUTPUT] Boot -> IDLE\r\n");
   
   /* Infinite loop */
   for(;;)
@@ -663,10 +779,13 @@ void StartDistanceTask(void *argument)
   static bool vl53l1x_ok = false;
   static bool scan_done = false;
   static uint16_t last_distance = 0;
+  static uint16_t distance_hist[DISTANCE_MEDIAN_WINDOW] = {0U, 0U, 0U};
+  static uint8_t distance_hist_count = 0U;
+  static uint8_t distance_hist_index = 0U;
   VL53L1_DEV dev = &vl53l1_dev;
   
   printf("DistanceTask start\r\n");
-  osDelay(100);  // Give UART time to flush
+  osDelay(300);  // Allow sensors/I2C rails to settle after boot
   
   /* Infinite loop */
   for(;;)
@@ -687,7 +806,7 @@ void StartDistanceTask(void *argument)
       }
       printf("Scan complete.\r\n");
       if (found_count == 0) {
-        printf("  No I2C devices found! Check wiring and pull-ups.\r\n");
+        printf("  No I2C devices detected in early scan (may still be booting).\r\n");
       } else {
         printf("  Total devices found: %u\r\n", found_count);
       }
@@ -742,19 +861,39 @@ void StartDistanceTask(void *argument)
       if ((status == VL53L1_ERROR_NONE) && data_ready) {
         status = VL53L1_GetRangingMeasurementData(dev, &measurement);
         if (status == VL53L1_ERROR_NONE) {
+          /* Ignore invalid range statuses; they are common during startup/recovery. */
+          if (measurement.RangeStatus != 0U) {
+            (void)VL53L1_ClearInterruptAndStartMeasurement(dev);
+            osDelay(10);
+            continue;
+          }
+
           uint16_t current_distance = (uint16_t)measurement.RangeMilliMeter;
-          int16_t diff = (int16_t)(current_distance > last_distance ? 
-                                    current_distance - last_distance : 
-                                    last_distance - current_distance);
+
+          /* Robustify ToF output: median-of-3 suppresses one-sample spikes. */
+          distance_hist[distance_hist_index] = current_distance;
+          distance_hist_index = (uint8_t)((distance_hist_index + 1U) % DISTANCE_MEDIAN_WINDOW);
+          if (distance_hist_count < DISTANCE_MEDIAN_WINDOW) {
+            distance_hist_count++;
+          }
+
+          uint16_t filtered_distance = current_distance;
+          if (distance_hist_count >= DISTANCE_MEDIAN_WINDOW) {
+            filtered_distance = median3_u16(distance_hist[0], distance_hist[1], distance_hist[2]);
+          }
+
+          int16_t diff = (int16_t)(filtered_distance > last_distance ? 
+                                    filtered_distance - last_distance : 
+                                    last_distance - filtered_distance);
           
           // Only print if distance changed by more than 50mm
           if (diff > 50 || last_distance == 0) {
-            printf("Distance: %u mm\r\n", (unsigned int)current_distance);
-            last_distance = current_distance;
+            printf("Distance: %u mm\r\n", (unsigned int)filtered_distance);
+            last_distance = filtered_distance;
           }
           
           DistanceSample_t sample;
-          sample.distance_mm = current_distance;
+          sample.distance_mm = filtered_distance;
           sample.tick = osKernelGetTickCount();
           osMessageQueuePut(distanceQueueHandle, &sample, 0U, 0U);
         }
@@ -765,6 +904,94 @@ void StartDistanceTask(void *argument)
     osDelay(50);
   }
   /* USER CODE END DistanceTask */
+}
+
+/* USER CODE BEGIN Header_StartAuthTask */
+/**
+* @brief Function implementing the AuthTask thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartAuthTask */
+void StartAuthTask(void *argument)
+{
+  /* USER CODE BEGIN AuthTask */
+  uint8_t rx = 0U;
+  char cmd[32];
+  uint32_t idx = 0U;
+
+  printf("[SEC] AuthTask ready. Use: AUTH <PIN>\r\n");
+
+  for (;;) {
+    if (HAL_UART_Receive(&huart3, &rx, 1U, 20U) != HAL_OK) {
+      osDelay(10);
+      continue;
+    }
+
+    if (rx == '\r' || rx == '\n') {
+      if (idx == 0U) {
+        continue;
+      }
+
+      cmd[idx] = '\0';
+      idx = 0U;
+
+      if (strncmp(cmd, "AUTH ", 5) == 0) {
+        uint32_t now = osKernelGetTickCount();
+        const char *pin = &cmd[5];
+        uint32_t remaining_ms = 0U;
+        uint8_t failed_attempts = 0U;
+        security_auth_result_t auth_result = security_policy_authenticate(pin, now, &remaining_ms, &failed_attempts);
+
+        if (auth_result == SECURITY_AUTH_OK) {
+          uint32_t auth_tick = osKernelGetTickCount();
+          (void)osMessageQueuePut(authQueueHandle, &auth_tick, 0U, 0U);
+          printf("[SEC] AUTH success\r\n");
+        } else if (auth_result == SECURITY_AUTH_LOCKED_OUT) {
+          printf("[SEC] AUTH denied: locked out (%lu ms left)\r\n", (unsigned long)remaining_ms);
+        } else if (auth_result == SECURITY_AUTH_FAIL) {
+          printf("[SEC] AUTH failed (attempts=%u)\r\n", (unsigned int)failed_attempts);
+          if (remaining_ms > 0U) {
+            printf("[SEC] Too many failures. Auth locked for %lu ms\r\n", (unsigned long)remaining_ms);
+          }
+        } else {
+          printf("[SEC] AUTH error\r\n");
+        }
+      } else if (strcmp(cmd, "SEC_STATUS") == 0) {
+        security_status_t status = {0};
+        security_policy_get_status(osKernelGetTickCount(), &status);
+        printf("[SEC] status: fails=%u lockout_ms=%lu seq=%lu logs=%u\r\n",
+               (unsigned int)status.failed_attempts,
+               (unsigned long)status.lockout_remaining_ms,
+               (unsigned long)status.sequence,
+               (unsigned int)status.log_count);
+      } else if (strcmp(cmd, "SEC_LOG") == 0) {
+        uint8_t total = security_policy_get_log_count();
+        uint8_t to_print = (total > 8U) ? 8U : total;
+        printf("[SEC] log entries (newest first): %u\r\n", (unsigned int)to_print);
+        for (uint8_t i = 0U; i < to_print; i++) {
+          security_event_t evt;
+          if (security_policy_get_log_entry(i, &evt)) {
+            printf("  [SEC][%u] t=%lu code=%s arg0=%u arg1=%u\r\n",
+                   (unsigned int)i,
+                   (unsigned long)evt.tick,
+                   security_policy_event_name(evt.code),
+                   (unsigned int)evt.arg0,
+                   (unsigned int)evt.arg1);
+          }
+        }
+      } else {
+        printf("[SEC] Unknown command. Use: AUTH <PIN>, SEC_STATUS, SEC_LOG\r\n");
+      }
+
+      continue;
+    }
+
+    if (idx < (sizeof(cmd) - 1U) && rx >= 0x20U && rx <= 0x7EU) {
+      cmd[idx++] = (char)rx;
+    }
+  }
+  /* USER CODE END AuthTask */
 }
 
 /* Private application code --------------------------------------------------*/
@@ -779,11 +1006,13 @@ static void LogRtosHealth(void)
   UBaseType_t fsm_hw = uxTaskGetStackHighWaterMark((TaskHandle_t)FsmTaskHandle);
   UBaseType_t output_hw = uxTaskGetStackHighWaterMark((TaskHandle_t)OutputTaskHandle);
   UBaseType_t distance_hw = uxTaskGetStackHighWaterMark((TaskHandle_t)DistanceTaskHandle);
+  UBaseType_t auth_hw = uxTaskGetStackHighWaterMark((TaskHandle_t)AuthTaskHandle);
 
   uint32_t sensor_count = 0U;
   uint32_t processing_count = 0U;
   uint32_t output_count = 0U;
   uint32_t distance_count = 0U;
+  uint32_t auth_count = 0U;
 
   if (sensorQueueHandle != NULL) {
     sensor_count = osMessageQueueGetCount(sensorQueueHandle);
@@ -797,8 +1026,11 @@ static void LogRtosHealth(void)
   if (distanceQueueHandle != NULL) {
     distance_count = osMessageQueueGetCount(distanceQueueHandle);
   }
+  if (authQueueHandle != NULL) {
+    auth_count = osMessageQueueGetCount(authQueueHandle);
+  }
 
-  printf("RTOS tick=%lu | HW stk: D=%lu S=%lu P=%lu F=%lu O=%lu Dist=%lu | Q: S=%lu P=%lu O=%lu Dist=%lu\r\n",
+  printf("RTOS tick=%lu | HW stk: D=%lu S=%lu P=%lu F=%lu O=%lu Dist=%lu Auth=%lu | Q: S=%lu P=%lu O=%lu Dist=%lu Auth=%lu\r\n",
          (unsigned long)osKernelGetTickCount(),
          (unsigned long)default_hw,
          (unsigned long)sensor_hw,
@@ -806,10 +1038,12 @@ static void LogRtosHealth(void)
          (unsigned long)fsm_hw,
          (unsigned long)output_hw,
          (unsigned long)distance_hw,
+         (unsigned long)auth_hw,
          (unsigned long)sensor_count,
          (unsigned long)processing_count,
          (unsigned long)output_count,
-         (unsigned long)distance_count);
+         (unsigned long)distance_count,
+         (unsigned long)auth_count);
 }
 /* USER CODE END Application */
 

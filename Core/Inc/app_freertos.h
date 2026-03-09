@@ -59,6 +59,8 @@ extern osThreadId_t SensorTaskHandle;
 extern osThreadId_t ProcessingTaskHandle;
 extern osThreadId_t FsmTaskHandle;
 extern osThreadId_t OutputTaskHandle;
+extern osThreadId_t DistanceTaskHandle;
+extern osThreadId_t AuthTaskHandle;
 
 /* Exported function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
@@ -70,6 +72,8 @@ void StartSensorTask(void *argument);
 void StartProcessingTask(void *argument);
 void StartFsmTask(void *argument);
 void StartOutputTask(void *argument);
+void StartDistanceTask(void *argument);
+void StartAuthTask(void *argument);
 
 void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
 
