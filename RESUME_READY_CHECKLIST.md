@@ -26,8 +26,8 @@ Status legend:
 | R3 | Fault handling policy | TODO | Behavior is documented for I2C failure, ToF invalid samples, OLED failure, and auth lockout edge cases. | `docs/fault_handling.md` |
 | R4 | Watchdog + fail-safe note | TODO | README states watchdog strategy and exact fail-safe actions on task stall/system fault. | `README.md` section link |
 | R5 | Static analysis snapshot | TODO | Run static analysis and record high-severity findings plus fixes/justification. | `docs/static_analysis.md` |
-| R6 | Performance budget report | TODO | Task periods, measured WCETs, end-to-end latency, and CPU headroom are documented with measurement method. | `docs/performance_budget.md` |
-| R7 | Memory/flash footprint | TODO | Debug (or release) firmware size and RAM usage are recorded from build output. | `docs/resource_usage.md` |
+| R6 | Performance budget report | DONE | Task periods, measured WCETs, end-to-end latency, and CPU headroom are documented with measurement method. | `docs/performance_budget.md` |
+| R7 | Memory/flash footprint | DONE | Debug (or release) firmware size and RAM usage are recorded from build output. | `docs/resource_usage.md` |
 | R8 | Security model summary | TODO | Threat model, mitigations, and known limitations are documented in concise engineering language. | `docs/security_model.md` |
 | R9 | Demo assets | TODO | 1-2 minute demo video plus still screenshots for key states (IDLE/ALERT/LOCK/auth flow). | `docs/demo_assets.md` |
 | R10 | Resume bullet pack | TODO | 4-6 quantified resume bullets derived from project metrics and results. | `docs/resume_bullets.md` |
