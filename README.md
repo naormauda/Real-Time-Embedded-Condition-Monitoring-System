@@ -334,6 +334,64 @@ OutputTask:     380/512  (74% free)
 - Lower-priority tasks tolerate more jitter (50ms for OutputTask)
 - Critical path (sensor → FSM) meets <100ms requirement
 
+### Watchdog Strategy and Fail-Safe Behavior
+
+#### Fail-Secure FSM Policy
+
+The security FSM is designed so that **any ambiguity defaults to the locked/alert state**. The `FSM_STATE_LOCK` exit condition requires three simultaneous conditions:
+
+```c
+bool quiet_long_enough = (now - last_threat_tick) >= SECURITY_UNLOCK_QUIET_MS;  // 2 s
+if (state_duration > FSM_LOCK_TIMEOUT_MS   // 5 s in LOCK
+    && quiet_long_enough                    // 2 s threat-quiet window
+    && auth_session_active) {               // valid authenticated session
+    // only path to IDLE from LOCK
+}
+```
+
+If any condition is missing (session expired, threat re-detected, timeout not elapsed), the FSM issues `FSM_DECISION_LOCK` and stays locked. This means:
+- **Power cycle during lock** → system reboots into LOCK; auth re-required.
+- **Session expires during lock** → lock cannot clear until re-auth.
+- **Auth succeeds but threat not quiet** → lock stays engaged until 2 s quiet.
+
+#### Hardware Watchdog (IWDG) — Current Status
+
+The STM32H563 IWDG peripheral is **not enabled in the current build**. This is a known gap for production deployment. The rationale and plan:
+
+| Aspect | Detail |
+|--------|--------|
+| Current mitigation | `LogRtosHealth()` in DefaultTask (1 Hz) reports stack HWMs and queue depths to UART; sustained monitoring catches stalled tasks. |
+| Gap | A stalled `FsmTask` or `SensorTask` would not trigger a reset without hardware watchdog. |
+| Production plan | Enable IWDG with a ≥2 s timeout; `DefaultTask` kicks the watchdog each 1 s iteration. All safety-critical tasks must have reported in (via shared flag) before kick is allowed. |
+| Why not yet | Lab/development phase — IWDG makes firmware update via ST-Link more complex; deferred until stabilization. |
+
+#### Fault Actions on System Failure
+
+| Fault | Action | Safety Outcome |
+|-------|--------|---------------|
+| Core peripheral init fail (clock, I2C) | `Error_Handler()` → infinite loop → IWDG reset (when enabled) | MCU restarts; FSM reinitializes in safe defaults |
+| VL53L1X init fail | `vl53l1x_ok = false`; 1 s retry loop; distance queue empty | No proximity detection; motion threshold still active |
+| OLED init fail | `osThreadExit()` from DisplayTask | All other tasks unaffected; display simply absent |
+| ML/FE init fail | Log; continue with threshold-only FSM | Conservative detection path remains active |
+| Flash write fail | Log; RAM-only security state until reboot | Auth/lockout works in RAM; lost on power cycle |
+| Auth lockout | 60 s ban persisted to flash; survives reboot | Brute-force blocked across power cycles |
+
+#### Runtime Health Monitoring
+
+`LogRtosHealth()` runs every 1000 ms from `DefaultTask` (lowest-priority task, always schedulable when system is healthy). It emits:
+
+```
+RTOS tick=12345 | HW stk: D=480 S=270 P=420 F=345 O=380 Dist=310 Auth=400
+| Q: S=0 P=0 O=0 Dist=0 Auth=0
+```
+
+- **HW stk** = stack high-water mark (words remaining per task; zero = overflow imminent)
+- **Q** = current items in each inter-task queue
+
+A queue consistently near capacity, or a stack value trending toward zero, is an early warning indicator observable on the UART terminal without halting the system.
+
+---
+
 ### Real-Time Design Patterns Applied
 
 1. **Rate Monotonic Scheduling**
@@ -353,8 +411,8 @@ OutputTask:     380/512  (74% free)
    - Clear boundaries prevent timing unpredictability from leaking across layers
 
 5. **Fail-Operational Design**
-   - Watchdog timer resets system if fatal error occurs (not yet enabled)
-   - Queue full scenario: Drop oldest sample (not implemented, but designed for)
+   - Fail-secure FSM requires auth + quiet period to exit LOCK (see above)
+   - IWDG watchdog planned for production; `DefaultTask` health monitor active now
 
 ---
 
