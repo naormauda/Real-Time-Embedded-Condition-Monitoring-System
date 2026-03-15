@@ -395,6 +395,10 @@ void StartSensorTask(void *argument)
 /* USER CODE BEGIN Header_StartProcessingTask */
 /**
 * @brief Function implementing the ProcessingTask thread.
+* @details
+* Drains sensor queues, computes feature windows, runs anomaly inference,
+* adapts baseline thresholding, and publishes fused data for FSM decisions.
+* This task is the primary compute stage between acquisition and control logic.
 * @param argument: Not used
 * @retval None
 */
@@ -542,6 +546,10 @@ void StartProcessingTask(void *argument)
 /* USER CODE BEGIN Header_StartFsmTask */
 /**
 * @brief Function implementing the FsmTask thread.
+* @details
+* Consumes fused sensor + ML context and enforces fail-secure transitions
+* across IDLE/ALERT/LOCK states. LOCK release requires both authentication
+* and a quiet-threat window, preventing ambiguous unlock paths.
 * @param argument: Not used
 * @retval None
 */
@@ -708,6 +716,9 @@ void StartFsmTask(void *argument)
 /* USER CODE BEGIN Header_StartOutputTask */
 /**
 * @brief Function implementing the OutputTask thread.
+* @details
+* Applies FSM decisions to actuators (LED, buzzer, servo) and performs
+* periodic buzzer pattern updates even when no new decision arrives.
 * @param argument: Not used
 * @retval None
 */
@@ -998,6 +1009,12 @@ void StartAuthTask(void *argument)
 /* USER CODE BEGIN Application */
 
 
+/**
+ * @brief Emit periodic runtime health telemetry for FreeRTOS diagnostics.
+ * @details
+ * Reports per-task stack high-water marks and queue occupancy counters so
+ * starvation, stack pressure, and queue backlogs can be detected online.
+ */
 static void LogRtosHealth(void)
 {
   UBaseType_t default_hw = uxTaskGetStackHighWaterMark((TaskHandle_t)defaultTaskHandle);

@@ -24,6 +24,85 @@ Resume polish checklist: see `RESUME_READY_CHECKLIST.md`
 
 ---
 
+## 🚀 Why This Architecture
+
+This system is intentionally built around a **deterministic real-time pipeline** first,
+then a lightweight on-device anomaly model.
+
+Why this approach instead of a heavier deep model:
+- **Predictable timing** is mandatory for a lock/alert safety path.
+- **Resource fit** matters on MCU-class hardware (RAM/flash/compute limits).
+- **Interpretable signals** (mean/variance/RMS/peak) are easier to validate on hardware traces.
+- **No cloud dependency** keeps behavior available during network loss.
+
+Current implementation:
+- Time-domain statistical feature extraction (12 features/window)
+- Generated Isolation Forest inference backend
+- FreeRTOS queue-driven task graph with bounded latencies
+
+Planned acceleration path (next iteration):
+- DMA-first sensor transfer where beneficial
+- CMSIS-DSP integration for frequency-domain features (FFT bands)
+- Model refresh with mixed time + frequency feature vectors
+
+---
+
+## 🗺️ Architecture At A Glance
+
+```mermaid
+flowchart LR
+  A[LIS3DSH SensorTask 10ms] --> Q1[sensorQueue]
+  B[VL53L1X DistanceTask 50ms] --> Q2[distanceQueue]
+  Q1 --> C[ProcessingTask 20ms\nFeature Extraction + IForest]
+  Q2 --> C
+  C --> Q3[processingQueue]
+  Q3 --> D[FsmTask\nIDLE/ALERT/LOCK]
+  D --> Q4[outputQueue]
+  Q4 --> E[OutputTask\nLED/Buzzer/Servo]
+  F[AuthTask UART] --> D
+```
+
+Design rules:
+- ISRs stay minimal and non-blocking.
+- Heavier compute runs in RTOS tasks, not interrupts.
+- Task boundaries are queue/event based for traceable latency.
+
+---
+
+## 📊 Real-Time Contract (Key KPIs)
+
+| Metric | Target | Current Evidence |
+|---|---|---|
+| Sensor sampling period | 10ms ±1ms | Mean 10.02ms, max jitter ±0.5ms |
+| Distance sampling period | 50ms ±5ms | Mean 50.1ms, max jitter ±2ms |
+| ML inference time | <50ms | Mean 12.1ms, max 15ms |
+| Sensor-to-decision latency | <100ms | Mean 38ms, max 55ms |
+
+The first anomaly decision is windowed (1s feature window), then subsequent evaluations run continuously per completed window.
+
+---
+
+## 🎥 Evidence And Demo Assets
+
+Media and capture checklist are tracked in `docs/demo_assets.md`.
+
+Expected asset paths:
+- `docs/assets/demo/smart_safe_demo.mp4`
+- `docs/assets/demo/idle_state.png`
+- `docs/assets/demo/alert_state.png`
+- `docs/assets/demo/lock_state.png`
+- `docs/assets/demo/auth_success.png`
+- `docs/assets/demo/lock_clear.png`
+
+Recommended final demo flow:
+1. Show heartbeat/IDLE telemetry.
+2. Trigger ALERT (motion or proximity) and hold long enough for escalation.
+3. Show LOCK reaction (visual + audio + lock actuator path).
+4. Authenticate and clear LOCK under quiet-window policy.
+5. End with `SEC_STATUS` and short `SEC_LOG` proof.
+
+---
+
 ## 🎯 Motivation
 
 In real industrial, automotive, and security systems:
@@ -42,7 +121,7 @@ on a resource-constrained microcontroller.
 
 **Real-Time Foundation:**
 - Deterministic sensor sampling (10ms accelerometer, 50ms ToF ranging)
-- Interrupt-driven, DMA-based data acquisition
+- Interrupt-driven acquisition with DMA optimization path identified
 - Multi-sensor fusion with guaranteed latency budgets
 - FreeRTOS task scheduling with priority-based preemption
 - Queue-based inter-task communication (bounded latency)

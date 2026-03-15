@@ -53,3 +53,33 @@ dkms.conf
 
 # debug information files
 *.dwo
+
+# CMake / Ninja build trees
+build/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+compile_commands.json
+*.ninja
+.ninja_*
+
+# IDE / editor metadata
+.vscode/
+.idea/
+*.code-workspace
+
+# Logs and temporary outputs
+*.log
+*.tmp
+*.bak
+
+# Python cache (tooling scripts)
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Local demo binaries or captures (source docs stay tracked)
+docs/assets/demo/*.mp4
+docs/assets/demo/*.mov
+docs/assets/demo/*.avi
