@@ -29,6 +29,9 @@ static TIM_HandleTypeDef* htim_pwm = NULL;
 static BuzzerPattern_t current_buzzer_pattern = BUZZER_OFF;
 static uint32_t buzzer_toggle_counter = 0;
 static bool buzzer_state = false;
+static ActuatorState_t current_state = ACTUATOR_STATE_IDLE;
+static uint32_t fault_blink_counter = 0;
+static bool fault_led_on = false;
 
 /* Private function prototypes -----------------------------------------------*/
 static void Buzzer_On(void);
@@ -74,6 +77,9 @@ bool Actuator_Init(TIM_HandleTypeDef* htim_buzzer_servo)
 void Actuator_SetState(ActuatorState_t state)
 {
   printf("[ACTUATOR] Setting state: %d\r\n", state);
+  current_state = state;
+  fault_blink_counter = 0;
+  fault_led_on = false;
   
   switch (state) {
     case ACTUATOR_STATE_IDLE:
@@ -116,6 +122,16 @@ void Actuator_SetState(ActuatorState_t state)
       // Servo locked
       Actuator_Servo_SetPosition(SERVO_LOCKED);
       printf("[ACTUATOR] LOCK: Red LED ON (PC6)\r\n");
+      break;
+
+    case ACTUATOR_STATE_HW_FAULT:
+      /* Distinct fault pattern: flashing red LED, no motion actuation. */
+      Actuator_LED_Green(false);
+      Actuator_LED_Yellow(false);
+      Actuator_LED_Red(false);
+      Actuator_Buzzer_SetPattern(BUZZER_OFF);
+      Actuator_Servo_SetPosition(SERVO_LOCKED);
+      printf("[ACTUATOR] HW_FAULT: Red LED flashing\r\n");
       break;
       
     default:
@@ -204,6 +220,17 @@ void Actuator_Servo_SetPosition(ServoPosition_t position)
  */
 void Actuator_Buzzer_Update(void)
 {
+  if (current_state == ACTUATOR_STATE_HW_FAULT) {
+    /* 50 ms update period -> toggle every 5 calls = 250 ms (2 Hz blink). */
+    fault_blink_counter++;
+    if (fault_blink_counter >= 5U) {
+      fault_led_on = !fault_led_on;
+      Actuator_LED_Red(fault_led_on);
+      fault_blink_counter = 0U;
+    }
+    return;
+  }
+
   buzzer_toggle_counter++;
   
   switch (current_buzzer_pattern) {

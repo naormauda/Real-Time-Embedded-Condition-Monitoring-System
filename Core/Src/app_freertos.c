@@ -56,7 +56,8 @@ typedef struct {
 typedef enum {
   FSM_DECISION_NONE = 0,
   FSM_DECISION_ALERT = 1,
-  FSM_DECISION_LOCK = 2
+  FSM_DECISION_LOCK = 2,
+  FSM_DECISION_FAULT = 3
 } FsmDecisionType_t;
 
 typedef struct {
@@ -117,6 +118,12 @@ typedef struct {
 #define SECURITY_AUTH_SESSION_MS       30000U
 #define SECURITY_UNLOCK_QUIET_MS       2000U
 
+#define HW_FAULT_LIS3DSH_SPI           (1UL << 0)
+#define HW_FAULT_LIS3DSH_WHOAMI        (1UL << 1)
+#define HW_FAULT_LIS3DSH_INVALID_DATA  (1UL << 2)
+
+#define TELEMETRY_JSON                 1
+
 #define VL53L1X_I2C_ADDR_7BIT       0x29U
 #define VL53L1X_I2C_ADDR_8BIT       (VL53L1X_I2C_ADDR_7BIT << 1)
 #define VL53L1X_TIMING_BUDGET_US    50000U
@@ -165,6 +172,9 @@ static const LIS3DSH_Config_t lis3dsh_config = {
 };
 
 static VL53L1_Dev_t vl53l1_dev;
+
+static volatile uint32_t g_hw_fault_flags = 0U;
+static volatile bool g_calibration_requested = false;
 
 extern UART_HandleTypeDef huart3;
 /* USER CODE END Variables */
@@ -221,6 +231,14 @@ const osThreadAttr_t AuthTask_attributes = {
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
 static void LogRtosHealth(void);
+static void TelemetryEmitMl(float score,
+                            float baseline,
+                            float threshold,
+                            uint32_t streak,
+                            uint32_t motion_mg,
+                            uint16_t distance_mm,
+                            bool hit,
+                            bool calib_mode);
 void StartDistanceTask(void *argument);
 void StartAuthTask(void *argument);
 
@@ -309,6 +327,7 @@ void StartDefaultTask(void *argument)
   /* Infinite loop */
   for(;;)
   {
+    IWDG_RefreshKick();
     LogRtosHealth();
     osDelay(1000);
   }
@@ -329,6 +348,9 @@ void StartSensorTask(void *argument)
   bool was_calibrated = false;
   uint32_t calib_log = 0U;
   bool lis3dsh_ok = false;
+  uint32_t whoami_poll_counter = 0U;
+  uint32_t invalid_raw_streak = 0U;
+  uint32_t healthy_streak = 0U;
 
   printf("SensorTask start\r\n");
 
@@ -354,6 +376,18 @@ void StartSensorTask(void *argument)
     int16_t y = 0;
     int16_t z = 0;
     if (LIS3DSH_ReadRaw(&lis3dsh, &x, &y, &z)) {
+      if ((x == 0) && (y == 0) && (z == 0)) {
+        if (invalid_raw_streak < 1000U) {
+          invalid_raw_streak++;
+        }
+      } else {
+        invalid_raw_streak = 0U;
+      }
+
+      if (invalid_raw_streak >= 5U) {
+        g_hw_fault_flags |= HW_FAULT_LIS3DSH_INVALID_DATA;
+      }
+
       if (discard_first) {
         discard_first = false;
       } else {
@@ -369,6 +403,7 @@ void StartSensorTask(void *argument)
           };
           (void)osMessageQueuePut(sensorQueueHandle, &sample, 0U, 0U);
           was_calibrated = true;
+          healthy_streak++;
         } else {
           bool calibrated = false;
           uint32_t count = 0U;
@@ -385,6 +420,24 @@ void StartSensorTask(void *argument)
       }
     } else {
       printf("RAW XYZ read failed\r\n");
+      g_hw_fault_flags |= HW_FAULT_LIS3DSH_SPI;
+      healthy_streak = 0U;
+    }
+
+    whoami_poll_counter++;
+    if (whoami_poll_counter >= 100U) {
+      uint8_t who_am_i = 0U;
+      whoami_poll_counter = 0U;
+      if (!LIS3DSH_ReadWhoAmI(&lis3dsh, &who_am_i) || (who_am_i != LIS3DSH_WHO_AM_I_VALUE)) {
+        g_hw_fault_flags |= HW_FAULT_LIS3DSH_WHOAMI;
+        healthy_streak = 0U;
+        printf("[FAULT] LIS3DSH WHO_AM_I check failed\r\n");
+      }
+    }
+
+    if ((healthy_streak >= 50U) && (g_hw_fault_flags != 0U)) {
+      /* Self-recovery path: clear transient sensor faults after sustained healthy samples. */
+      g_hw_fault_flags = 0U;
     }
 
     osDelay(10);
@@ -418,6 +471,10 @@ void StartProcessingTask(void *argument)
   static float ml_baseline_score = 0.0f;
   static uint32_t ml_baseline_count = 0;
   static uint32_t ml_streak_count = 0;
+  static bool calibration_mode = false;
+  static uint32_t calibration_end_tick = 0U;
+  static float calibration_score_sum = 0.0f;
+  static uint32_t calibration_windows = 0U;
 
   char log_buffer[256];
 
@@ -437,6 +494,16 @@ void StartProcessingTask(void *argument)
     SensorSample_t accel_sample;
     DistanceSample_t distance_sample;
     bool data_updated = false;
+
+    if (g_calibration_requested) {
+      g_calibration_requested = false;
+      calibration_mode = true;
+      calibration_end_tick = osKernelGetTickCount() + 10000U;
+      calibration_score_sum = 0.0f;
+      calibration_windows = 0U;
+      ml_streak_count = 0U;
+      printf("[CAL] Learning phase started (10s)\r\n");
+    }
 
     /* Drain ALL pending accelerometer samples (keep latest) */
     while (osMessageQueueGet(sensorQueueHandle, &accel_sample, NULL, 0) == osOK) {
@@ -492,6 +559,27 @@ void StartProcessingTask(void *argument)
           ml_streak_count = 0U;
         }
 
+        if (calibration_mode) {
+          calibration_score_sum += ml_result.anomaly_score;
+          calibration_windows++;
+          if ((int32_t)(osKernelGetTickCount() - calibration_end_tick) >= 0) {
+            if (calibration_windows > 0U) {
+              float learned_baseline = calibration_score_sum / (float)calibration_windows;
+              float learned_threshold = learned_baseline + ML_SCORE_MARGIN;
+              if (learned_threshold < 0.10f) learned_threshold = 0.10f;
+              if (learned_threshold > 0.95f) learned_threshold = 0.95f;
+              (void)ml_set_threshold(learned_threshold);
+              ml_baseline_score = learned_baseline;
+              ml_baseline_count = ML_BASELINE_MIN_WINDOWS;
+              printf("[CAL] done windows=%lu baseline=%.3f threshold=%.3f\r\n",
+                     (unsigned long)calibration_windows,
+                     learned_baseline,
+                     learned_threshold);
+            }
+            calibration_mode = false;
+          }
+        }
+
         last_ml_anomaly = ml_hit;
         last_ml_anomaly_sustained = (ml_streak_count >= FSM_ML_ALERT_STREAK_MIN);
         last_ml_score = ml_result.anomaly_score;
@@ -500,12 +588,14 @@ void StartProcessingTask(void *argument)
         display_state_update_ml(last_ml_score, last_ml_anomaly, ml_result.inference_time_ms);
 
         /* Compact debug log with adaptive threshold state */
-        printf("[ML] score=%.2f base=%.2f thr=%.2f hit=%u streak=%lu\r\n",
-               last_ml_score,
-               ml_baseline_score,
-               dynamic_threshold,
-               (unsigned int)last_ml_anomaly,
-               (unsigned long)ml_streak_count);
+        TelemetryEmitMl(last_ml_score,
+            ml_baseline_score,
+            dynamic_threshold,
+            ml_streak_count,
+            last_motion_mg,
+            last_distance_mm,
+            last_ml_anomaly,
+            calibration_mode);
 
         /* Keep FE log for offline traceability */
         fe_format_features(log_buffer, sizeof(log_buffer));
@@ -608,6 +698,10 @@ void StartFsmTask(void *argument)
         .tick = fused.tick
       };
 
+      if (g_hw_fault_flags != 0U) {
+        state = FSM_STATE_ERROR;
+      }
+
       switch (state) {
         case FSM_STATE_IDLE:
           if (motion_detected || proximity_supported || ml_alert) {
@@ -702,6 +796,16 @@ void StartFsmTask(void *argument)
           }
           break;
 
+        case FSM_STATE_ERROR:
+          decision.decision = FSM_DECISION_FAULT;
+          if (g_hw_fault_flags == 0U) {
+            state = FSM_STATE_IDLE;
+            state_enter_tick = now;
+            display_state_update_fsm(FSM_STATE_IDLE, state_enter_tick);
+            printf("[FSM] ERROR -> IDLE (fault cleared)\r\n");
+          }
+          break;
+
         default:
           state = FSM_STATE_IDLE;
           break;
@@ -758,6 +862,11 @@ void StartOutputTask(void *argument)
           case FSM_DECISION_LOCK:
             printf("  [OUTPUT] LOCK: Security engaged!\r\n");
             Actuator_SetState(ACTUATOR_STATE_LOCK);
+            break;
+
+          case FSM_DECISION_FAULT:
+            printf("  [OUTPUT] HW_FAULT: Sensor communication failure\r\n");
+            Actuator_SetState(ACTUATOR_STATE_HW_FAULT);
             break;
             
           default:
@@ -931,7 +1040,7 @@ void StartAuthTask(void *argument)
   char cmd[32];
   uint32_t idx = 0U;
 
-  printf("[SEC] AuthTask ready. Use: AUTH <PIN>\r\n");
+  printf("[SEC] AuthTask ready. Use: AUTH <PIN> | SEC_STATUS | SEC_LOG | C\r\n");
 
   for (;;) {
     if (HAL_UART_Receive(&huart3, &rx, 1U, 20U) != HAL_OK) {
@@ -991,8 +1100,11 @@ void StartAuthTask(void *argument)
                    (unsigned int)evt.arg1);
           }
         }
+      } else if (strcmp(cmd, "C") == 0) {
+        g_calibration_requested = true;
+        printf("[CAL] request accepted\r\n");
       } else {
-        printf("[SEC] Unknown command. Use: AUTH <PIN>, SEC_STATUS, SEC_LOG\r\n");
+        printf("[SEC] Unknown command. Use: AUTH <PIN>, SEC_STATUS, SEC_LOG, C\r\n");
       }
 
       continue;
@@ -1047,7 +1159,7 @@ static void LogRtosHealth(void)
     auth_count = osMessageQueueGetCount(authQueueHandle);
   }
 
-  printf("RTOS tick=%lu | HW stk: D=%lu S=%lu P=%lu F=%lu O=%lu Dist=%lu Auth=%lu | Q: S=%lu P=%lu O=%lu Dist=%lu Auth=%lu\r\n",
+  printf("{\"type\":\"RTOS\",\"tick\":%lu,\"hw\":{\"D\":%lu,\"S\":%lu,\"P\":%lu,\"F\":%lu,\"O\":%lu,\"Dist\":%lu,\"Auth\":%lu},\"q\":{\"S\":%lu,\"P\":%lu,\"O\":%lu,\"Dist\":%lu,\"Auth\":%lu},\"fault\":%lu}\r\n",
          (unsigned long)osKernelGetTickCount(),
          (unsigned long)default_hw,
          (unsigned long)sensor_hw,
@@ -1060,7 +1172,46 @@ static void LogRtosHealth(void)
          (unsigned long)processing_count,
          (unsigned long)output_count,
          (unsigned long)distance_count,
-         (unsigned long)auth_count);
+         (unsigned long)auth_count,
+         (unsigned long)g_hw_fault_flags);
+}
+
+static void TelemetryEmitMl(float score,
+                            float baseline,
+                            float threshold,
+                            uint32_t streak,
+                            uint32_t motion_mg,
+                            uint16_t distance_mm,
+                            bool hit,
+                            bool calib_mode)
+{
+#if TELEMETRY_JSON
+  printf("{\"type\":\"ML\",\"tick\":%lu,\"score\":%.3f,\"baseline\":%.3f,\"threshold\":%.3f,\"streak\":%lu,\"motion_mg\":%lu,\"distance_mm\":%u,\"hit\":%u,\"calib\":%u,\"fft_dom_hz\":%.2f,\"fft_band\":%.2f}\r\n",
+         (unsigned long)osKernelGetTickCount(),
+         score,
+         baseline,
+         threshold,
+         (unsigned long)streak,
+         (unsigned long)motion_mg,
+         (unsigned int)distance_mm,
+         (unsigned int)hit,
+    (unsigned int)calib_mode,
+    fe_get_fft_dominant_hz(),
+    fe_get_fft_band_energy());
+#else
+  printf("CSV,ML,%lu,%.3f,%.3f,%.3f,%lu,%lu,%u,%u,%u,%.2f,%.2f\r\n",
+         (unsigned long)osKernelGetTickCount(),
+         score,
+         baseline,
+         threshold,
+         (unsigned long)streak,
+         (unsigned long)motion_mg,
+         (unsigned int)distance_mm,
+         (unsigned int)hit,
+    (unsigned int)calib_mode,
+    fe_get_fft_dominant_hz(),
+    fe_get_fft_band_energy());
+#endif
 }
 /* USER CODE END Application */
 

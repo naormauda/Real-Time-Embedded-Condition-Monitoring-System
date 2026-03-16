@@ -80,6 +80,22 @@ Design rules:
 
 The first anomaly decision is windowed (1s feature window), then subsequent evaluations run continuously per completed window.
 
+### Task Timing Diagram (Mermaid)
+
+```mermaid
+gantt
+  title FreeRTOS task cadence (representative 100 ms window)
+  dateFormat  X
+  axisFormat %L
+  section Acquisition
+  SensorTask (10 ms)      :active, s1, 0, 100
+  DistanceTask (50 ms)    :active, d1, 0, 100
+  section Compute + Control
+  ProcessingTask (20 ms)  :active, p1, 0, 100
+  FsmTask (20 ms)         :active, f1, 0, 100
+  OutputTask (50 ms)      :active, o1, 0, 100
+```
+
 ---
 
 ## 🎥 Evidence And Demo Assets
@@ -121,7 +137,7 @@ on a resource-constrained microcontroller.
 
 **Real-Time Foundation:**
 - Deterministic sensor sampling (10ms accelerometer, 50ms ToF ranging)
-- Interrupt-driven acquisition with DMA optimization path identified
+- DMA-assisted SPI burst acquisition for LIS3DSH samples
 - Multi-sensor fusion with guaranteed latency budgets
 - FreeRTOS task scheduling with priority-based preemption
 - Queue-based inter-task communication (bounded latency)
@@ -134,9 +150,15 @@ on a resource-constrained microcontroller.
 
 **System Response:**
 - Event-driven finite state machine (IDLE/ALERT/LOCK)
+- Dedicated hardware-fault mode with flashing red LED alert
 - Sensor-to-actuator latency: <100ms end-to-end
 - Immediate local reaction (LEDs, buzzer, servo lock)
 - Fail-secure state transitions (authenticated unlock required)
+
+**Telemetry & Control:**
+- Structured JSON telemetry over UART for machine parsing
+- Runtime fault flags exported with RTOS health snapshots
+- `C` UART command starts 10-second healthy-state calibration
 
 **Professional Architecture:**
 - Modular, layered design (drivers → tasks → logic → output)
@@ -392,6 +414,20 @@ OutputTask:     380/512  (74% free)
 - No stack overflow warnings logged
 - **Design validation:** Generous stack allocation confirmed safe
 
+### Memory Management Details
+
+The project uses FreeRTOS `heap_4` and tracks stack headroom continuously.
+
+Why `heap_4` was selected:
+- Supports dynamic allocation and free with block coalescing.
+- Reduces long-run fragmentation risk compared with non-coalescing heaps.
+- Fits this mixed middleware + application allocation profile.
+
+How overflow risk is controlled:
+- Per-task stack margins monitored via `uxTaskGetStackHighWaterMark()`.
+- Queue occupancy sampled at 1 Hz in `LogRtosHealth()`.
+- Structured UART telemetry enables offline trend analysis for stack/queue pressure.
+
 ### Determinism & Jitter Analysis
 
 **Key Metrics (measured via timestamp logging):**
@@ -435,7 +471,16 @@ If any condition is missing (session expired, threat re-detected, timeout not el
 
 #### Hardware Watchdog (IWDG) — Current Status
 
-The STM32H563 IWDG peripheral is **not enabled in the current build**. This is a known gap for production deployment. The rationale and plan:
+The STM32H563 IWDG peripheral is enabled in the current build to improve fail-safe recovery.
+
+| Aspect | Detail |
+|--------|--------|
+| Timeout configuration | ~2 seconds (LSI-based prescaler/reload) |
+| Refresh source | `StartDefaultTask` refreshes watchdog every 1 second |
+| Failure behavior | Scheduler stall or runaway task causes automatic MCU reset |
+| Recovery path | Boot POST runs again and monitoring pipeline restarts |
+
+Development rationale and monitoring context:
 
 | Aspect | Detail |
 |--------|--------|
@@ -460,8 +505,7 @@ The STM32H563 IWDG peripheral is **not enabled in the current build**. This is a
 `LogRtosHealth()` runs every 1000 ms from `DefaultTask` (lowest-priority task, always schedulable when system is healthy). It emits:
 
 ```
-RTOS tick=12345 | HW stk: D=480 S=270 P=420 F=345 O=380 Dist=310 Auth=400
-| Q: S=0 P=0 O=0 Dist=0 Auth=0
+{"type":"RTOS","tick":12345,"hw":{"D":480,"S":270,"P":420,"F":345,"O":380,"Dist":310,"Auth":400},"q":{"S":0,"P":0,"O":0,"Dist":0,"Auth":0},"fault":0}
 ```
 
 - **HW stk** = stack high-water mark (words remaining per task; zero = overflow imminent)

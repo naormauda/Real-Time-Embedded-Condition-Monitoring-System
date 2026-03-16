@@ -34,7 +34,8 @@ extern "C" {
 typedef enum {
   ACTUATOR_STATE_IDLE = 0,
   ACTUATOR_STATE_ALERT,
-  ACTUATOR_STATE_LOCK
+  ACTUATOR_STATE_LOCK,
+  ACTUATOR_STATE_HW_FAULT
 } ActuatorState_t;
 
 typedef enum {

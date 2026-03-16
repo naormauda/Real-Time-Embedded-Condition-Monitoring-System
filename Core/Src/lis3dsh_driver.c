@@ -9,6 +9,7 @@
 #define LIS3DSH_REG_OUT_Z_L  0x2C
 #define LIS3DSH_REG_OUT_Z_H  0x2D
 #define LIS3D_SPI_READ       0x80
+#define LIS3D_SPI_BURST      0x40
 
 // Convert full-scale enum to mg value
 static int32_t LIS3DSH_FS_ToMg(LIS3DSH_FS_t fs)
@@ -57,6 +58,37 @@ static bool LIS3DSH_SPI_ReadReg(const LIS3DSH_Handle_t *handle, uint8_t reg, uin
   LIS3DSH_CS_High(handle);
   *value = rx[1];
   return true;
+}
+
+static bool LIS3DSH_SPI_Transfer(const LIS3DSH_Handle_t *handle,
+                                 uint8_t *tx,
+                                 uint8_t *rx,
+                                 uint16_t len,
+                                 uint32_t timeout_ms)
+{
+  if (handle == NULL || handle->config.hspi == NULL || tx == NULL || rx == NULL || len == 0U) {
+    return false;
+  }
+
+  SPI_HandleTypeDef *hspi = handle->config.hspi;
+
+  if ((hspi->hdmatx != NULL) && (hspi->hdmarx != NULL)) {
+    if (HAL_SPI_TransmitReceive_DMA(hspi, tx, rx, len) != HAL_OK) {
+      return false;
+    }
+
+    uint32_t start = HAL_GetTick();
+    while (HAL_SPI_GetState(hspi) != HAL_SPI_STATE_READY) {
+      if ((HAL_GetTick() - start) > timeout_ms) {
+        (void)HAL_SPI_Abort(hspi);
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  return (HAL_SPI_TransmitReceive(hspi, tx, rx, len, timeout_ms) == HAL_OK);
 }
 
 static bool LIS3DSH_SPI_WriteReg(const LIS3DSH_Handle_t *handle, uint8_t reg, uint8_t value)
@@ -124,25 +156,25 @@ bool LIS3DSH_ReadRaw(LIS3DSH_Handle_t *handle, int16_t *x, int16_t *y, int16_t *
     return false;
   }
 
-  uint8_t xl = 0;
-  uint8_t xh = 0;
-  uint8_t yl = 0;
-  uint8_t yh = 0;
-  uint8_t zl = 0;
-  uint8_t zh = 0;
+  uint8_t tx[7] = {0};
+  uint8_t rx[7] = {0};
 
-  if (!LIS3DSH_SPI_ReadReg(handle, LIS3DSH_REG_OUT_X_L, &xl) ||
-      !LIS3DSH_SPI_ReadReg(handle, LIS3DSH_REG_OUT_X_H, &xh) ||
-      !LIS3DSH_SPI_ReadReg(handle, LIS3DSH_REG_OUT_Y_L, &yl) ||
-      !LIS3DSH_SPI_ReadReg(handle, LIS3DSH_REG_OUT_Y_H, &yh) ||
-      !LIS3DSH_SPI_ReadReg(handle, LIS3DSH_REG_OUT_Z_L, &zl) ||
-      !LIS3DSH_SPI_ReadReg(handle, LIS3DSH_REG_OUT_Z_H, &zh)) {
+  tx[0] = (uint8_t)(LIS3DSH_REG_OUT_X_L | LIS3D_SPI_READ | LIS3D_SPI_BURST);
+
+  LIS3DSH_CS_Low(handle);
+  for (volatile int i = 0; i < 200; i++) {
+  }
+
+  if (!LIS3DSH_SPI_Transfer(handle, tx, rx, (uint16_t)sizeof(tx), 20U)) {
+    LIS3DSH_CS_High(handle);
     return false;
   }
 
-  *x = (int16_t)((xh << 8) | xl);
-  *y = (int16_t)((yh << 8) | yl);
-  *z = (int16_t)((zh << 8) | zl);
+  LIS3DSH_CS_High(handle);
+
+  *x = (int16_t)((((uint16_t)rx[2]) << 8) | rx[1]);
+  *y = (int16_t)((((uint16_t)rx[4]) << 8) | rx[3]);
+  *z = (int16_t)((((uint16_t)rx[6]) << 8) | rx[5]);
   return true;
 }
 

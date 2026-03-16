@@ -51,6 +51,7 @@ extern "C" {
 
 /* Exported functions prototypes ---------------------------------------------*/
 void Error_Handler(void);
+void IWDG_RefreshKick(void);
 
 /* USER CODE BEGIN EFP */
 
