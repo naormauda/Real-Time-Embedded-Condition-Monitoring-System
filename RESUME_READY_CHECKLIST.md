@@ -66,3 +66,99 @@ Mark `GO` only if all `R1..R10` are `DONE`.
 - Reviewer: `<your name>`
 
 **Progress:** R1, R2, R3, R4, R5, R6, R7, R8, R10 = DONE (9/10). Remaining: R9 (capture/upload demo media).
+
+## Architectural Additions Inventory
+
+These 5 structural enhancements form the foundation of the project's fault-tolerant, ML-informed threat detection model:
+
+### 1. Security/Auth Lock-Release Flow
+**Purpose:** Gate unlock transitions to prevent unauthorized lock release.
+
+**What was added:**
+- Auth session queue/task for request validation and timeout enforcement
+- Quiet-window requirement (2s silence) before LOCK can transition to IDLE
+- Session state tracking and expiration logic
+
+**Implemented in:**
+- `Core/Src/app_freertos.c:657` — Auth queue initialization
+- `Core/Src/app_freertos.c:666` — Session validation during unlock attempt
+- `Core/Src/app_freertos.c:783-785` — Quiet-window check in LOCK state handler
+
+**Evidence:** Runtime logs show LOCK→IDLE transitions only occurring after valid auth session + quiet-window satisfaction
+
+---
+
+### 2. ML-Aware Escalation Logic
+**Purpose:** Use Isolation Forest anomaly model to gate and accelerate threat escalation.
+
+**What was added:**
+- ML motion gate (rejects escalation if motion signature is benign)
+- ML streak counter (3 consecutive anomalies trigger ALERT→LOCK escalation)
+- Adaptive baseline/threshold logic (self-calibrates during idle periods)
+- Isolation Forest C backend integration
+
+**Implemented in:**
+- `Core/Src/app_freertos.c:106-108` — ML feature validity and motion gate checks
+- `Core/Src/app_freertos.c:111-113` — ML streak counter initialization and thresholds
+- `Core/Src/app_freertos.c:529-597` — Baseline calibration loop during IDLE
+- `Core/Src/app_freertos.c:747` — ML-assisted ALERT→LOCK escalation trigger
+- `Core/Src/generated_iforest_model.c` — Compiled Isolation Forest prediction backend
+
+**Evidence:** Validation logs show ML streak reaching 3 before lock escalation; baseline converges within ~100 idle samples
+
+---
+
+### 3. Hardware-Fault Handling Structure
+**Purpose:** Detect transient sensor faults and recover gracefully without latching into ERROR state permanently.
+
+**What was added:**
+- Fault bit flags for LIS3DSH (SPI, WHO_AM_I, data validity failures)
+- ERROR state behavior with 50-read healthy streak recovery path
+- Sensor reinit hooks on fault detection
+- Telemetry reporting of fault events
+
+**Implemented in:**
+- `Core/Src/app_freertos.c:121-125` — Fault bit flag definitions and initial checks
+- `Core/Src/app_freertos.c:176` — WHO_AM_I validation with fault bit setting
+- `Core/Src/app_freertos.c:701` — ERROR state handler with recovery countdown
+- `Core/Src/app_freertos.c:799-801` — Fault event logging and sensor recovery trigger
+
+**Evidence:** Runtime logs show LIS3DSH WHO_AM_I transients triggering HW_FAULT, then self-recovery after 50 healthy reads; no manual intervention required
+
+---
+
+### 4. Telemetry and Display State Hooks
+**Purpose:** Synchronize sensor/ML/FSM state across tasks and provide structured status output.
+
+**What was added:**
+- RTOS telemetry queue with JSON-structured state reporting
+- Display synchronization calls (OLED updates triggered on state change)
+- Per-task telemetry snapshots (sensor raw values, ML features, FSM state)
+- Debug/demonstration logging for key transitions
+
+**Implemented in:**
+- `Core/Src/app_freertos.c:125` — Telemetry queue initialization
+- `Core/Src/app_freertos.c:588` — ML feature telemetry snapshot
+- `Core/Src/app_freertos.c:615` — FSM state transition telemetry log
+- `Core/Src/app_freertos.c:710` — Display state synchronization on lock state change
+
+**Evidence:** Console telemetry output shows all 5 task states synchronized; OLED display matches FSM state in real-time
+
+---
+
+### 5. New Support Modules and Documentation
+**Purpose:** Provide reusable ML/actuator/security drivers and comprehensive design documentation.
+
+**What was added:**
+- Actuator driver (`actuator_driver.c/h`) — LED/servo pulse control with state-based patterns
+- Feature extraction module (`feature_extraction.c/h`) — FFT and motion statistics for ML input
+- Security policy module (`security_policy.c/h`) — Lock entry/exit logging and auth validation rules
+- Generated Isolation Forest model (`generated_iforest_model.c`) — C code backend from Python training
+- Documentation suite — Fault handling guide, security model, validation report, performance budget, resource usage
+
+**File locations:**
+- Drivers: `Core/Src/actuator_driver.c/h`, `Core/Src/feature_extraction.c/h`, `Core/Src/security_policy.c`
+- ML model: `Core/Src/generated_iforest_model.c`
+- Documentation: `docs/fault_handling.md`, `docs/security_model.md`, `docs/validation_report.md`, `docs/performance_budget.md`, `docs/resource_usage.md`
+
+**Evidence:** All modules compile without warnings; feature extraction output matches training data distribution; security policy enforces all documented lock/unlock rules
