@@ -75,6 +75,11 @@ void NMI_Handler(void)
   /* USER CODE BEGIN NonMaskableInt_IRQn 1 */
    while (1)
   {
+    HAL_GPIO_TogglePin(LED_GREEN_GPIO_Port, LED_GREEN_Pin);
+    HAL_GPIO_TogglePin(LED_YELLOW_GPIO_Port, LED_YELLOW_Pin);
+    HAL_GPIO_TogglePin(LED_RED_GPIO_Port, LED_RED_Pin);
+    for (volatile uint32_t i = 0; i < 250000U; i++) {
+    }
   }
   /* USER CODE END NonMaskableInt_IRQn 1 */
 }
@@ -90,6 +95,9 @@ void HardFault_Handler(void)
   while (1)
   {
     /* USER CODE BEGIN W1_HardFault_IRQn 0 */
+    HAL_GPIO_TogglePin(LED_RED_GPIO_Port, LED_RED_Pin);
+    for (volatile uint32_t i = 0; i < 250000U; i++) {
+    }
     /* USER CODE END W1_HardFault_IRQn 0 */
   }
 }
@@ -105,6 +113,9 @@ void MemManage_Handler(void)
   while (1)
   {
     /* USER CODE BEGIN W1_MemoryManagement_IRQn 0 */
+    HAL_GPIO_TogglePin(LED_YELLOW_GPIO_Port, LED_YELLOW_Pin);
+    for (volatile uint32_t i = 0; i < 250000U; i++) {
+    }
     /* USER CODE END W1_MemoryManagement_IRQn 0 */
   }
 }
@@ -120,6 +131,10 @@ void BusFault_Handler(void)
   while (1)
   {
     /* USER CODE BEGIN W1_BusFault_IRQn 0 */
+    HAL_GPIO_TogglePin(LED_YELLOW_GPIO_Port, LED_YELLOW_Pin);
+    HAL_GPIO_TogglePin(LED_RED_GPIO_Port, LED_RED_Pin);
+    for (volatile uint32_t i = 0; i < 250000U; i++) {
+    }
     /* USER CODE END W1_BusFault_IRQn 0 */
   }
 }
@@ -135,6 +150,10 @@ void UsageFault_Handler(void)
   while (1)
   {
     /* USER CODE BEGIN W1_UsageFault_IRQn 0 */
+    HAL_GPIO_TogglePin(LED_GREEN_GPIO_Port, LED_GREEN_Pin);
+    HAL_GPIO_TogglePin(LED_RED_GPIO_Port, LED_RED_Pin);
+    for (volatile uint32_t i = 0; i < 250000U; i++) {
+    }
     /* USER CODE END W1_UsageFault_IRQn 0 */
   }
 }

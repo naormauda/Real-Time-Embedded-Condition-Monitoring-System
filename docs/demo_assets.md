@@ -25,6 +25,8 @@ Recommended storage path:
 - `docs/assets/demo/lock_state.png`
 - `docs/assets/demo/auth_success.png`
 - `docs/assets/demo/lock_clear.png`
+- `docs/assets/demo/serial_plotter_fft_spike.png`
+- `docs/assets/demo/serial_plotter_idle_baseline.png`
 
 ---
 
@@ -72,6 +74,8 @@ Recommended storage path:
 - [ ] `lock_state.png` captured
 - [ ] `auth_success.png` captured
 - [ ] `lock_clear.png` captured
+- [ ] `serial_plotter_fft_spike.png` captured
+- [ ] `serial_plotter_idle_baseline.png` captured
 - [ ] Assets copied into `docs/assets/demo/`
 - [ ] File names match manifest
 
@@ -87,5 +91,7 @@ Recommended storage path:
 | LOCK screenshot | `docs/assets/demo/lock_state.png` | PENDING |
 | Auth success screenshot | `docs/assets/demo/auth_success.png` | PENDING |
 | Lock clear screenshot | `docs/assets/demo/lock_clear.png` | PENDING |
+| FFT spike plot screenshot | `docs/assets/demo/serial_plotter_fft_spike.png` | PENDING |
+| Idle baseline plot screenshot | `docs/assets/demo/serial_plotter_idle_baseline.png` | PENDING |
 
 When all statuses are complete, switch `PENDING` to `DONE` and then mark R9 as DONE in `RESUME_READY_CHECKLIST.md`.

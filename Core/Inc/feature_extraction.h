@@ -18,7 +18,6 @@
  *   - Window size: 100 samples @ 100 Hz = 1 second
  *   - Online computation: stats updated as buffer fills
  *   - Zero-copy access to feature vector
- *   - Optional FFT telemetry path (CMSIS-DSP when available)
  *
  * Usage:
  *   fe_init();
@@ -188,17 +187,5 @@ uint32_t fe_get_sample_count(void);
  * @return Number of characters written (not including null terminator)
  */
 int fe_format_features(char *buffer, int size);
-
-/**
- * @brief Get dominant vibration frequency from latest FFT pass
- * @return Dominant frequency in Hz
- */
-float fe_get_fft_dominant_hz(void);
-
-/**
- * @brief Get low-band spectral energy from latest FFT pass
- * @return Relative energy scalar (implementation-defined units)
- */
-float fe_get_fft_band_energy(void);
 
 #endif /* FEATURE_EXTRACTION_H */

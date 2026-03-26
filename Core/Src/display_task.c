@@ -4,6 +4,7 @@
  */
 
 #include "display_task.h"
+#include "app_freertos.h"
 #include "cmsis_os2.h"
 #include <string.h>
 #include <stdio.h>
@@ -117,11 +118,18 @@ static void StartDisplayTask(void *argument)
 
     /* Initialize display driver */
     printf("[DISPLAY] Initializing SSD1306 display...\r\n");
+    if (!app_i2c1_lock(1000U)) {
+        printf("[DISPLAY] ERROR: I2C bus mutex timeout on init\r\n");
+        osThreadExit();
+        return;
+    }
     if (!ssd1306_init(hi2c)) {
+        app_i2c1_unlock();
         printf("[DISPLAY] ERROR: SSD1306 initialization failed\r\n");
         osThreadExit();
         return;
     }
+    app_i2c1_unlock();
 
     printf("[DISPLAY] SSD1306 initialized, starting UI loop\r\n");
 
@@ -149,6 +157,10 @@ static void StartDisplayTask(void *argument)
     /* Display context for rendering */
     display_context_t display_ctx = {0};
     display_ctx.current_screen = DISPLAY_SCREEN_STATUS;
+    uint32_t render_fail_streak = 0U;
+    uint32_t render_fail_window_start = 0U;
+    uint32_t render_fail_window_count = 0U;
+    uint32_t next_recovery_tick = 0U;
 
     /* Main loop - update display every 500ms */
     uint32_t screen_timeout = 5000;  /* retained for future use */
@@ -192,8 +204,58 @@ static void StartDisplayTask(void *argument)
         }
 
         /* Render current screen */
-        if (!display_ui_render_screen(&display_ctx)) {
+        if (!app_i2c1_lock(500U)) {
+            printf("[DISPLAY] ERROR: I2C bus mutex timeout during render\r\n");
+            osDelay(100);
+            continue;
+        }
+
+        bool render_ok = display_ui_render_screen(&display_ctx);
+        app_i2c1_unlock();
+
+        if (!render_ok) {
             printf("[DISPLAY] ERROR: Failed to render screen\r\n");
+            if (render_fail_streak < 1000U) {
+                render_fail_streak++;
+            }
+
+            if ((render_fail_window_start == 0U) || ((now - render_fail_window_start) > 5000U)) {
+                render_fail_window_start = now;
+                render_fail_window_count = 1U;
+            } else if (render_fail_window_count < 1000U) {
+                render_fail_window_count++;
+            }
+
+            if (((render_fail_streak >= 3U) || (render_fail_window_count >= 3U)) && (now >= next_recovery_tick)) {
+                printf("[DISPLAY] Attempting SSD1306 recovery...\r\n");
+
+                if (!app_i2c1_lock(1000U)) {
+                    printf("[DISPLAY] ERROR: I2C bus mutex timeout during recovery\r\n");
+                    next_recovery_tick = now + 2000U;
+                    continue;
+                }
+
+                /* Recover bus/peripheral state after repeated I2C write failures. */
+                (void)HAL_I2C_DeInit(hi2c);
+                if (HAL_I2C_Init(hi2c) != HAL_OK) {
+                    app_i2c1_unlock();
+                    printf("[DISPLAY] ERROR: I2C1 re-init failed\r\n");
+                    next_recovery_tick = now + 2000U;
+                } else if (!ssd1306_init(hi2c)) {
+                    app_i2c1_unlock();
+                    printf("[DISPLAY] ERROR: SSD1306 re-init failed\r\n");
+                    next_recovery_tick = now + 2000U;
+                } else {
+                    app_i2c1_unlock();
+                    printf("[DISPLAY] SSD1306 recovery successful\r\n");
+                    render_fail_streak = 0U;
+                    render_fail_window_start = 0U;
+                    render_fail_window_count = 0U;
+                    next_recovery_tick = now + 3000U;
+                }
+            }
+        } else {
+            render_fail_streak = 0U;
         }
 
         /* Keep a fixed dashboard page for clarity. */

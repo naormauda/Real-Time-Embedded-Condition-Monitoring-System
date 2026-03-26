@@ -2,7 +2,7 @@
 /**
   ******************************************************************************
   * @file    actuator_driver.h
-  * @brief   Actuator driver for LEDs, buzzer, and servo motor
+  * @brief   Actuator driver for LEDs and buzzer (servo optional)
   * @author  Smart Safe Project
   * @date    February 2026
   ******************************************************************************
@@ -10,10 +10,10 @@
   *
   * Hardware connections:
   * - LED_IDLE (Green):  PB0 (GPIO Output)
-  * - LED_ALERT (Yellow): PB7 (GPIO Output)
-  * - LED_LOCK (Red):    PB14 (GPIO Output)
+  * - LED_ALERT (Yellow): PE4 (GPIO Output)
+  * - LED_LOCK (Red):    PC6 (GPIO Output)
   * - BUZZER:            PC7 (TIM3_CH2, PWM)
-  * - SERVO:             PA6 (TIM3_CH1, PWM)
+  * - SERVO:             PA6 (TIM3_CH1, PWM, disabled in current build)
   *
   ******************************************************************************
   */
@@ -34,8 +34,7 @@ extern "C" {
 typedef enum {
   ACTUATOR_STATE_IDLE = 0,
   ACTUATOR_STATE_ALERT,
-  ACTUATOR_STATE_LOCK,
-  ACTUATOR_STATE_HW_FAULT
+  ACTUATOR_STATE_LOCK
 } ActuatorState_t;
 
 typedef enum {
@@ -54,12 +53,21 @@ typedef enum {
 #define BUZZER_FREQUENCY_HZ     2000    // 2 kHz tone
 #define SERVO_FREQUENCY_HZ      50      // Standard servo PWM frequency
 
+/* Disable outputs for hardware that is not connected. */
+#ifndef ACTUATOR_ENABLE_SERVO
+#define ACTUATOR_ENABLE_SERVO 0
+#endif
+
+#ifndef ACTUATOR_ENABLE_BUZZER
+#define ACTUATOR_ENABLE_BUZZER 1
+#endif
+
 /* Exported macro ------------------------------------------------------------*/
 
 /* Exported functions prototypes ---------------------------------------------*/
 
 /**
- * @brief Initialize all actuators (LEDs, buzzer, servo)
+ * @brief Initialize all actuators (LEDs, buzzer, optional servo)
  * @param htim_buzzer_servo Pointer to TIM3 handle for PWM
  * @retval true if initialization successful, false otherwise
  */

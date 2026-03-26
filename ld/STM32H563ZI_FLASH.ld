@@ -40,8 +40,13 @@ ENTRY(Reset_Handler)
 MEMORY
 {
 	RAM    (xrw)    : ORIGIN = 0x20000000,   LENGTH = 640K
-	FLASH    (rx)    : ORIGIN = 0x8000000,   LENGTH = 2032K
+	FLASH    (rx)    : ORIGIN = 0x8000000,   LENGTH = 1008K
+	SECURITY_FLASH (rx) : ORIGIN = 0x080FC000, LENGTH = 16K
 }
+
+/* Dedicated persistent security storage region (excluded from application image). */
+__security_store_start__ = ORIGIN(SECURITY_FLASH);
+__security_store_end__ = ORIGIN(SECURITY_FLASH) + LENGTH(SECURITY_FLASH);
 /* Highest address of the user mode stack */
 _estack = ORIGIN(RAM) + LENGTH(RAM); /* end of "RAM" Ram type memory */
 

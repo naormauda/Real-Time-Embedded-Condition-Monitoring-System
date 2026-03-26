@@ -29,6 +29,7 @@
 
 #include "lis3dsh_driver.h"
 #include "vl53l1_api.h"
+#include "vl53l1_api_core.h"
 #include "vl53l1_platform.h"
 #include "actuator_driver.h"
 #include "feature_extraction.h"
@@ -56,8 +57,7 @@ typedef struct {
 typedef enum {
   FSM_DECISION_NONE = 0,
   FSM_DECISION_ALERT = 1,
-  FSM_DECISION_LOCK = 2,
-  FSM_DECISION_FAULT = 3
+  FSM_DECISION_LOCK = 2
 } FsmDecisionType_t;
 
 typedef struct {
@@ -97,15 +97,19 @@ typedef struct {
 #define FSM_PROXIMITY_THRESHOLD_MM 500U
 #define FSM_PROXIMITY_STREAK_MIN   3U
 #define FSM_PROXIMITY_STARTUP_GRACE_MS 3000U
-#define FSM_PROXIMITY_MOTION_GATE_MG 1100U
+#define FSM_PROXIMITY_MOTION_GATE_MG 1300U
+#define FSM_NEAR_THREAT_STREAK_MIN  2U
 #define FSM_LOCK_TIMEOUT_MS        5000U
-#define FSM_ALERT_DUAL_STREAK_MIN  5U
-#define FSM_ALERT_MIN_DWELL_MS     1500U
+#define FSM_ALERT_DUAL_STREAK_MIN  20U
+#define FSM_ALERT_MIN_DWELL_MS     6000U
+#define FSM_ALERT_CLEAR_DWELL_MS   1200U
+#define FSM_MOTION_STREAK_MIN      3U
 
 /* ML-aware FSM tuning */
 #define FSM_ML_MIN_MOTION_GATE_MG   1100U
 #define FSM_ML_ALERT_STREAK_MIN     3U
-#define FSM_ML_LOCK_STREAK_MIN      3U
+#define FSM_ML_LOCK_STREAK_MIN      6U
+#define FSM_ML_NEAR_MAX_MM          700U
 
 /* Adaptive ML baseline calibration (ProcessingTask) */
 #define ML_BASELINE_MIN_WINDOWS      20U
@@ -118,19 +122,16 @@ typedef struct {
 #define SECURITY_AUTH_SESSION_MS       30000U
 #define SECURITY_UNLOCK_QUIET_MS       2000U
 
-#define HW_FAULT_LIS3DSH_SPI           (1UL << 0)
-#define HW_FAULT_LIS3DSH_WHOAMI        (1UL << 1)
-#define HW_FAULT_LIS3DSH_INVALID_DATA  (1UL << 2)
-
-#define TELEMETRY_JSON                 1
-
 #define VL53L1X_I2C_ADDR_7BIT       0x29U
 #define VL53L1X_I2C_ADDR_8BIT       (VL53L1X_I2C_ADDR_7BIT << 1)
 #define VL53L1X_TIMING_BUDGET_US    50000U
 #define VL53L1X_INTERMEASUREMENT_MS 100U
 #define DISTANCE_MEDIAN_WINDOW       3U
+#define I2C_RECOVERY_FAIL_THRESHOLD  5U
 
 #define ABS_I32(x)                 ((int32_t)((x) < 0 ? -(x) : (x)))
+
+extern I2C_HandleTypeDef hi2c1;
 
 static uint16_t median3_u16(uint16_t a, uint16_t b, uint16_t c)
 {
@@ -138,6 +139,179 @@ static uint16_t median3_u16(uint16_t a, uint16_t b, uint16_t c)
   if (b > c) { uint16_t t = b; b = c; c = t; }
   if (a > b) { uint16_t t = a; a = b; b = t; }
   return b;
+}
+
+static void vl53l1_log_step_error(const char *step, VL53L1_Error status)
+{
+  char err_text[VL53L1_MAX_STRING_LENGTH] = {0};
+  if (VL53L1_GetPalErrorString(status, err_text) != VL53L1_ERROR_NONE) {
+    (void)strncpy(err_text, "unknown", sizeof(err_text) - 1U);
+    err_text[sizeof(err_text) - 1U] = '\0';
+  }
+
+  printf("VL53L1X %s failed: status=%d (%s)\r\n", step, (int)status, err_text);
+}
+
+static VL53L1_Error vl53l1_init_sequence(VL53L1_DEV dev)
+{
+  const uint32_t max_attempts = 2U;
+  VL53L1_Error status = VL53L1_ERROR_NONE;
+
+  for (uint32_t attempt = 1U; attempt <= max_attempts; ++attempt) {
+    status = VL53L1_WaitDeviceBooted(dev);
+    if (status != VL53L1_ERROR_NONE) {
+      vl53l1_log_step_error("WaitDeviceBooted", status);
+      goto retry_or_exit;
+    }
+
+    status = VL53L1_DataInit(dev);
+    if (status != VL53L1_ERROR_NONE) {
+      vl53l1_log_step_error("DataInit", status);
+      goto retry_or_exit;
+    }
+
+    status = VL53L1_StaticInit(dev);
+    if (status != VL53L1_ERROR_NONE) {
+      vl53l1_log_step_error("StaticInit", status);
+      goto retry_or_exit;
+    }
+
+    status = VL53L1_SetDistanceMode(dev, VL53L1_DISTANCEMODE_LONG);
+    if (status != VL53L1_ERROR_NONE) {
+      vl53l1_log_step_error("SetDistanceMode", status);
+      goto retry_or_exit;
+    }
+
+    status = VL53L1_SetMeasurementTimingBudgetMicroSeconds(dev, VL53L1X_TIMING_BUDGET_US);
+    if (status != VL53L1_ERROR_NONE) {
+      vl53l1_log_step_error("SetMeasurementTimingBudget", status);
+      goto retry_or_exit;
+    }
+
+    status = VL53L1_SetInterMeasurementPeriodMilliSeconds(dev, VL53L1X_INTERMEASUREMENT_MS);
+    if (status != VL53L1_ERROR_NONE) {
+      vl53l1_log_step_error("SetInterMeasurementPeriod", status);
+      goto retry_or_exit;
+    }
+
+    status = VL53L1_StartMeasurement(dev);
+    if (status != VL53L1_ERROR_NONE) {
+      vl53l1_log_step_error("StartMeasurement", status);
+      goto retry_or_exit;
+    }
+
+    return VL53L1_ERROR_NONE;
+
+retry_or_exit:
+    if (attempt < max_attempts) {
+      printf("VL53L1X init attempt %lu/%lu failed; software reset and retry\r\n",
+             (unsigned long)attempt,
+             (unsigned long)max_attempts);
+      status = VL53L1_software_reset(dev);
+      if (status != VL53L1_ERROR_NONE) {
+        vl53l1_log_step_error("software_reset", status);
+        return status;
+      }
+      osDelay(20);
+      continue;
+    }
+
+    return status;
+  }
+
+  return status;
+}
+
+static uint8_t i2c1_scan_bus_once(void)
+{
+  if (!app_i2c1_lock(250U)) {
+    printf("[I2C] scan skipped: mutex timeout\r\n");
+    return 0U;
+  }
+
+  uint8_t found_count = 0U;
+  printf("Starting I2C1 bus scan...\r\n");
+  osDelay(50);
+
+  for (uint8_t addr = 0x08U; addr < 0x78U; addr++) {
+    if (HAL_I2C_IsDeviceReady(&hi2c1, (uint16_t)(addr << 1), 1, 5) == HAL_OK) {
+      printf("  Found device at 0x%02X\r\n", addr);
+      found_count++;
+    }
+    if ((addr % 16U) == 0U) {
+      osDelay(1);
+    }
+  }
+
+  printf("Scan complete.\r\n");
+  if (found_count == 0U) {
+    printf("  No I2C devices detected in scan.\r\n");
+  } else {
+    printf("  Total devices found: %u\r\n", found_count);
+  }
+  app_i2c1_unlock();
+  return found_count;
+}
+
+static bool i2c1_bus_recover_and_reinit(const char *reason)
+{
+  GPIO_InitTypeDef gpio = {0};
+
+  printf("[I2C] Recovery requested: %s\r\n", reason);
+
+  if (!app_i2c1_lock(osWaitForever)) {
+    printf("[I2C] recovery failed: mutex timeout\r\n");
+    return false;
+  }
+
+  (void)HAL_I2C_DeInit(&hi2c1);
+
+  __HAL_RCC_GPIOB_CLK_ENABLE();
+  gpio.Pin = GPIO_PIN_8 | GPIO_PIN_9;
+  gpio.Mode = GPIO_MODE_OUTPUT_OD;
+  gpio.Pull = GPIO_PULLUP;
+  gpio.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOB, &gpio);
+
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, GPIO_PIN_SET);
+
+  for (uint32_t i = 0U; i < 9U; i++) {
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_RESET);
+    osDelay(1);
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_SET);
+    osDelay(1);
+  }
+
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, GPIO_PIN_RESET);
+  osDelay(1);
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_SET);
+  osDelay(1);
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, GPIO_PIN_SET);
+  osDelay(1);
+
+  if (HAL_I2C_Init(&hi2c1) != HAL_OK) {
+    printf("[I2C] HAL_I2C_Init failed (err=0x%08lX state=%lu)\r\n",
+           (unsigned long)HAL_I2C_GetError(&hi2c1),
+           (unsigned long)HAL_I2C_GetState(&hi2c1));
+    app_i2c1_unlock();
+    return false;
+  }
+  app_i2c1_unlock();
+
+  uint8_t found = i2c1_scan_bus_once();
+  if (!app_i2c1_lock(250U)) {
+    printf("[I2C] post-recovery probe skipped: mutex timeout\r\n");
+    return false;
+  }
+  bool oled_ready = (HAL_I2C_IsDeviceReady(&hi2c1, (0x3CU << 1), 2, 20) == HAL_OK);
+  bool tof_ready = (HAL_I2C_IsDeviceReady(&hi2c1, (VL53L1X_I2C_ADDR_7BIT << 1), 2, 20) == HAL_OK);
+  app_i2c1_unlock();
+  printf("[I2C] Post-recovery probe: OLED=%u ToF=%u devices=%u\r\n",
+         (unsigned int)oled_ready,
+         (unsigned int)tof_ready,
+         (unsigned int)found);
+  return true;
 }
 /* USER CODE END PD */
 
@@ -159,6 +333,8 @@ static osMessageQueueId_t processingQueueHandle;
 static osMessageQueueId_t outputQueueHandle;
 static osMessageQueueId_t distanceQueueHandle;
 static osMessageQueueId_t authQueueHandle;
+static osMutexId_t i2c1BusMutexHandle;
+static bool displayTaskStarted = false;
 
 static LIS3DSH_Handle_t lis3dsh;
 static const LIS3DSH_Config_t lis3dsh_config = {
@@ -172,9 +348,6 @@ static const LIS3DSH_Config_t lis3dsh_config = {
 };
 
 static VL53L1_Dev_t vl53l1_dev;
-
-static volatile uint32_t g_hw_fault_flags = 0U;
-static volatile bool g_calibration_requested = false;
 
 extern UART_HandleTypeDef huart3;
 /* USER CODE END Variables */
@@ -231,16 +404,23 @@ const osThreadAttr_t AuthTask_attributes = {
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
 static void LogRtosHealth(void);
-static void TelemetryEmitMl(float score,
-                            float baseline,
-                            float threshold,
-                            uint32_t streak,
-                            uint32_t motion_mg,
-                            uint16_t distance_mm,
-                            bool hit,
-                            bool calib_mode);
 void StartDistanceTask(void *argument);
 void StartAuthTask(void *argument);
+
+bool app_i2c1_lock(uint32_t timeout)
+{
+  if (i2c1BusMutexHandle == NULL) {
+    return true;
+  }
+  return (osMutexAcquire(i2c1BusMutexHandle, timeout) == osOK);
+}
+
+void app_i2c1_unlock(void)
+{
+  if (i2c1BusMutexHandle != NULL) {
+    (void)osMutexRelease(i2c1BusMutexHandle);
+  }
+}
 
 /* USER CODE END FunctionPrototypes */
 
@@ -258,8 +438,17 @@ void MX_FREERTOS_Init(void) {
     printf("Actuator driver initialized successfully\r\n");
   }
 
+  printf("[APP] Before security_policy_init\r\n");
   if (!security_policy_init()) {
     printf("[SEC] ERROR: security policy init failed\r\n");
+  } else {
+    printf("[APP] After security_policy_init\r\n");
+  }
+
+  osMutexAttr_t i2c_attr = { .name = "i2c1BusMutex" };
+  i2c1BusMutexHandle = osMutexNew(&i2c_attr);
+  if (i2c1BusMutexHandle == NULL) {
+    printf("[I2C] ERROR: i2c1 bus mutex creation failed\r\n");
   }
   /* USER CODE END Init */
 
@@ -281,6 +470,7 @@ void MX_FREERTOS_Init(void) {
   outputQueueHandle = osMessageQueueNew(OUTPUT_QUEUE_LENGTH, sizeof(FsmDecision_t), NULL);
   distanceQueueHandle = osMessageQueueNew(DISTANCE_QUEUE_LENGTH, sizeof(DistanceSample_t), NULL);
   authQueueHandle = osMessageQueueNew(AUTH_QUEUE_LENGTH, sizeof(uint32_t), NULL);
+  printf("[APP] Queues created\r\n");
   /* USER CODE END RTOS_QUEUES */
   /* creation of defaultTask */
   defaultTaskHandle = osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
@@ -296,17 +486,15 @@ void MX_FREERTOS_Init(void) {
 
   /* creation of OutputTask */
   OutputTaskHandle = osThreadNew(StartOutputTask, NULL, &OutputTask_attributes);
+  printf("[APP] Core tasks created\r\n");
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* creation of DistanceTask */
   DistanceTaskHandle = osThreadNew(StartDistanceTask, NULL, &DistanceTask_attributes);
   /* creation of AuthTask */
   AuthTaskHandle = osThreadNew(StartAuthTask, NULL, &AuthTask_attributes);
-  
-  /* creation of DisplayTask */
-  if (!display_task_start(&hi2c1)) {
-    printf("[APP] WARNING: DisplayTask creation failed\r\n");
-  }
+  printf("[APP] Distance/Auth tasks created\r\n");
+  printf("[APP] DisplayTask deferred until VL53L1X ready\r\n");
   /* USER CODE END RTOS_THREADS */
 
   /* USER CODE BEGIN RTOS_EVENTS */
@@ -327,7 +515,6 @@ void StartDefaultTask(void *argument)
   /* Infinite loop */
   for(;;)
   {
-    IWDG_RefreshKick();
     LogRtosHealth();
     osDelay(1000);
   }
@@ -348,9 +535,6 @@ void StartSensorTask(void *argument)
   bool was_calibrated = false;
   uint32_t calib_log = 0U;
   bool lis3dsh_ok = false;
-  uint32_t whoami_poll_counter = 0U;
-  uint32_t invalid_raw_streak = 0U;
-  uint32_t healthy_streak = 0U;
 
   printf("SensorTask start\r\n");
 
@@ -362,8 +546,13 @@ void StartSensorTask(void *argument)
       if (lis3dsh_ok) {
         uint8_t who_am_i = 0U;
         printf("LIS3DSH ready\r\n");
-        if (LIS3DSH_ReadWhoAmI(&lis3dsh, &who_am_i)) {
+        if (LIS3DSH_ReadWhoAmI(&lis3dsh, &who_am_i) && (who_am_i == LIS3DSH_WHO_AM_I_VALUE)) {
           printf("WHO_AM_I=0x%02X\r\n", who_am_i);
+        } else {
+          printf("LIS3DSH WHO_AM_I invalid (0x%02X), retry init\r\n", who_am_i);
+          lis3dsh_ok = false;
+          osDelay(200);
+          continue;
         }
       } else {
         // Sensor not connected - silently retry
@@ -376,18 +565,6 @@ void StartSensorTask(void *argument)
     int16_t y = 0;
     int16_t z = 0;
     if (LIS3DSH_ReadRaw(&lis3dsh, &x, &y, &z)) {
-      if ((x == 0) && (y == 0) && (z == 0)) {
-        if (invalid_raw_streak < 1000U) {
-          invalid_raw_streak++;
-        }
-      } else {
-        invalid_raw_streak = 0U;
-      }
-
-      if (invalid_raw_streak >= 5U) {
-        g_hw_fault_flags |= HW_FAULT_LIS3DSH_INVALID_DATA;
-      }
-
       if (discard_first) {
         discard_first = false;
       } else {
@@ -403,7 +580,6 @@ void StartSensorTask(void *argument)
           };
           (void)osMessageQueuePut(sensorQueueHandle, &sample, 0U, 0U);
           was_calibrated = true;
-          healthy_streak++;
         } else {
           bool calibrated = false;
           uint32_t count = 0U;
@@ -420,24 +596,6 @@ void StartSensorTask(void *argument)
       }
     } else {
       printf("RAW XYZ read failed\r\n");
-      g_hw_fault_flags |= HW_FAULT_LIS3DSH_SPI;
-      healthy_streak = 0U;
-    }
-
-    whoami_poll_counter++;
-    if (whoami_poll_counter >= 100U) {
-      uint8_t who_am_i = 0U;
-      whoami_poll_counter = 0U;
-      if (!LIS3DSH_ReadWhoAmI(&lis3dsh, &who_am_i) || (who_am_i != LIS3DSH_WHO_AM_I_VALUE)) {
-        g_hw_fault_flags |= HW_FAULT_LIS3DSH_WHOAMI;
-        healthy_streak = 0U;
-        printf("[FAULT] LIS3DSH WHO_AM_I check failed\r\n");
-      }
-    }
-
-    if ((healthy_streak >= 50U) && (g_hw_fault_flags != 0U)) {
-      /* Self-recovery path: clear transient sensor faults after sustained healthy samples. */
-      g_hw_fault_flags = 0U;
     }
 
     osDelay(10);
@@ -448,10 +606,6 @@ void StartSensorTask(void *argument)
 /* USER CODE BEGIN Header_StartProcessingTask */
 /**
 * @brief Function implementing the ProcessingTask thread.
-* @details
-* Drains sensor queues, computes feature windows, runs anomaly inference,
-* adapts baseline thresholding, and publishes fused data for FSM decisions.
-* This task is the primary compute stage between acquisition and control logic.
 * @param argument: Not used
 * @retval None
 */
@@ -471,10 +625,6 @@ void StartProcessingTask(void *argument)
   static float ml_baseline_score = 0.0f;
   static uint32_t ml_baseline_count = 0;
   static uint32_t ml_streak_count = 0;
-  static bool calibration_mode = false;
-  static uint32_t calibration_end_tick = 0U;
-  static float calibration_score_sum = 0.0f;
-  static uint32_t calibration_windows = 0U;
 
   char log_buffer[256];
 
@@ -494,16 +644,6 @@ void StartProcessingTask(void *argument)
     SensorSample_t accel_sample;
     DistanceSample_t distance_sample;
     bool data_updated = false;
-
-    if (g_calibration_requested) {
-      g_calibration_requested = false;
-      calibration_mode = true;
-      calibration_end_tick = osKernelGetTickCount() + 10000U;
-      calibration_score_sum = 0.0f;
-      calibration_windows = 0U;
-      ml_streak_count = 0U;
-      printf("[CAL] Learning phase started (10s)\r\n");
-    }
 
     /* Drain ALL pending accelerometer samples (keep latest) */
     while (osMessageQueueGet(sensorQueueHandle, &accel_sample, NULL, 0) == osOK) {
@@ -550,34 +690,15 @@ void StartProcessingTask(void *argument)
         }
 
         /* Score must exceed dynamic threshold and pass motion gate */
+        bool ml_near_gate = (last_distance_mm > 0U) && (last_distance_mm <= FSM_ML_NEAR_MAX_MM);
         bool ml_hit = (ml_result.anomaly_score > dynamic_threshold) &&
-                      (last_motion_mg >= FSM_ML_MIN_MOTION_GATE_MG);
+                (last_motion_mg >= FSM_ML_MIN_MOTION_GATE_MG) &&
+                ml_near_gate;
 
         if (ml_hit) {
           ml_streak_count++;
         } else {
           ml_streak_count = 0U;
-        }
-
-        if (calibration_mode) {
-          calibration_score_sum += ml_result.anomaly_score;
-          calibration_windows++;
-          if ((int32_t)(osKernelGetTickCount() - calibration_end_tick) >= 0) {
-            if (calibration_windows > 0U) {
-              float learned_baseline = calibration_score_sum / (float)calibration_windows;
-              float learned_threshold = learned_baseline + ML_SCORE_MARGIN;
-              if (learned_threshold < 0.10f) learned_threshold = 0.10f;
-              if (learned_threshold > 0.95f) learned_threshold = 0.95f;
-              (void)ml_set_threshold(learned_threshold);
-              ml_baseline_score = learned_baseline;
-              ml_baseline_count = ML_BASELINE_MIN_WINDOWS;
-              printf("[CAL] done windows=%lu baseline=%.3f threshold=%.3f\r\n",
-                     (unsigned long)calibration_windows,
-                     learned_baseline,
-                     learned_threshold);
-            }
-            calibration_mode = false;
-          }
         }
 
         last_ml_anomaly = ml_hit;
@@ -588,14 +709,12 @@ void StartProcessingTask(void *argument)
         display_state_update_ml(last_ml_score, last_ml_anomaly, ml_result.inference_time_ms);
 
         /* Compact debug log with adaptive threshold state */
-        TelemetryEmitMl(last_ml_score,
-            ml_baseline_score,
-            dynamic_threshold,
-            ml_streak_count,
-            last_motion_mg,
-            last_distance_mm,
-            last_ml_anomaly,
-            calibration_mode);
+        printf("[ML] score=%.2f base=%.2f thr=%.2f hit=%u streak=%lu\r\n",
+               last_ml_score,
+               ml_baseline_score,
+               dynamic_threshold,
+               (unsigned int)last_ml_anomaly,
+               (unsigned long)ml_streak_count);
 
         /* Keep FE log for offline traceability */
         fe_format_features(log_buffer, sizeof(log_buffer));
@@ -636,10 +755,6 @@ void StartProcessingTask(void *argument)
 /* USER CODE BEGIN Header_StartFsmTask */
 /**
 * @brief Function implementing the FsmTask thread.
-* @details
-* Consumes fused sensor + ML context and enforces fail-secure transitions
-* across IDLE/ALERT/LOCK states. LOCK release requires both authentication
-* and a quiet-threat window, preventing ambiguous unlock paths.
 * @param argument: Not used
 * @retval None
 */
@@ -653,6 +768,8 @@ void StartFsmTask(void *argument)
   uint32_t alert_count = 0;
   uint32_t ml_lock_streak = 0;
   uint32_t proximity_streak = 0;
+  uint32_t motion_streak = 0;
+  uint32_t near_threat_streak = 0;
   uint32_t last_threat_tick = 0;
   uint32_t auth_session_expire_tick = 0;
 
@@ -670,6 +787,13 @@ void StartFsmTask(void *argument)
       }
 
       bool motion_detected = (fused.motion_magnitude_mg > FSM_MOTION_THRESHOLD_MG);
+      if (motion_detected) {
+        if (motion_streak < 1000U) {
+          motion_streak++;
+        }
+      } else {
+        motion_streak = 0U;
+      }
       bool raw_object_near = (fused.distance_mm > 0U && fused.distance_mm < FSM_PROXIMITY_THRESHOLD_MM);
       if (raw_object_near) {
         if (proximity_streak < 1000U) {
@@ -686,10 +810,19 @@ void StartFsmTask(void *argument)
         object_near = false;
       }
       bool proximity_supported = object_near && (fused.motion_magnitude_mg >= FSM_PROXIMITY_MOTION_GATE_MG);
+      bool near_context_threat = proximity_supported || (ml_alert && object_near);
+      if (near_context_threat) {
+        if (near_threat_streak < 1000U) {
+          near_threat_streak++;
+        }
+      } else {
+        near_threat_streak = 0U;
+      }
       uint32_t state_duration = now - state_enter_tick;
+      uint32_t quiet_duration = now - last_threat_tick;
       bool auth_session_active = (auth_session_expire_tick != 0U) && (now < auth_session_expire_tick);
 
-      if (motion_detected || proximity_supported || ml_alert) {
+      if (near_context_threat) {
         last_threat_tick = now;
       }
 
@@ -698,18 +831,15 @@ void StartFsmTask(void *argument)
         .tick = fused.tick
       };
 
-      if (g_hw_fault_flags != 0U) {
-        state = FSM_STATE_ERROR;
-      }
-
       switch (state) {
         case FSM_STATE_IDLE:
-          if (motion_detected || proximity_supported || ml_alert) {
+          if (near_threat_streak >= FSM_NEAR_THREAT_STREAK_MIN) {
             state = FSM_STATE_ALERT;
             state_enter_tick = now;
             display_state_update_fsm(FSM_STATE_ALERT, state_enter_tick);
             alert_count = 0;
             ml_lock_streak = 0;
+            near_threat_streak = 0U;
             decision.decision = FSM_DECISION_ALERT;
             printf("[FSM] IDLE -> ALERT (motion=%lu mg, dist=%u mm, prox_sup=%u, ml=%.2f s=%u)\r\n",
                    (unsigned long)fused.motion_magnitude_mg,
@@ -722,7 +852,7 @@ void StartFsmTask(void *argument)
 
         case FSM_STATE_ALERT: {
           bool dual_sensor_threat = motion_detected && proximity_supported;
-          bool ml_supported_threat = ml_alert && (motion_detected || proximity_supported);
+          bool ml_supported_threat = ml_alert && proximity_supported;
           bool alert_dwell_ok = state_duration >= FSM_ALERT_MIN_DWELL_MS;
 
           if (dual_sensor_threat || ml_supported_threat) {
@@ -734,12 +864,14 @@ void StartFsmTask(void *argument)
               ml_lock_streak = 0U;
             }
 
-            printf("  [FSM] Threat keepalive: motion=%lu dist=%u ml=%.2f (count=%lu ml_streak=%lu)\r\n",
-                   (unsigned long)fused.motion_magnitude_mg,
-                   fused.distance_mm,
-                   fused.ml_score,
-                   (unsigned long)alert_count,
-                   (unsigned long)ml_lock_streak);
+                 if ((alert_count % 5U) == 0U) {
+              printf("  [FSM] Threat keepalive: motion=%lu dist=%u ml=%.2f (count=%lu ml_streak=%lu)\r\n",
+                (unsigned long)fused.motion_magnitude_mg,
+                fused.distance_mm,
+                fused.ml_score,
+                (unsigned long)alert_count,
+                (unsigned long)ml_lock_streak);
+                 }
 
             bool dual_sensor_escalate = dual_sensor_threat &&
                                         (alert_count >= FSM_ALERT_DUAL_STREAK_MIN) &&
@@ -763,18 +895,25 @@ void StartFsmTask(void *argument)
             } else {
               decision.decision = FSM_DECISION_ALERT;
             }
-          } else if (!motion_detected && !proximity_supported && !ml_alert) {
+          } else if (!motion_detected && !proximity_supported && !ml_alert &&
+                     (state_duration >= FSM_ALERT_MIN_DWELL_MS) &&
+                     (quiet_duration >= FSM_ALERT_CLEAR_DWELL_MS)) {
             state = FSM_STATE_IDLE;
             state_enter_tick = now;
             display_state_update_fsm(FSM_STATE_IDLE, state_enter_tick);
             decision.decision = FSM_DECISION_NONE;
             ml_lock_streak = 0U;
             proximity_streak = 0U;
+            motion_streak = 0U;
             printf("[FSM] ALERT -> IDLE (threat cleared)\r\n");
           } else {
             decision.decision = FSM_DECISION_ALERT;
-            alert_count = 0;
-            ml_lock_streak = 0U;
+            if (alert_count > 0U) {
+              alert_count--;
+            }
+            if (ml_lock_streak > 0U) {
+              ml_lock_streak--;
+            }
           }
           break;
         }
@@ -796,16 +935,6 @@ void StartFsmTask(void *argument)
           }
           break;
 
-        case FSM_STATE_ERROR:
-          decision.decision = FSM_DECISION_FAULT;
-          if (g_hw_fault_flags == 0U) {
-            state = FSM_STATE_IDLE;
-            state_enter_tick = now;
-            display_state_update_fsm(FSM_STATE_IDLE, state_enter_tick);
-            printf("[FSM] ERROR -> IDLE (fault cleared)\r\n");
-          }
-          break;
-
         default:
           state = FSM_STATE_IDLE;
           break;
@@ -820,9 +949,6 @@ void StartFsmTask(void *argument)
 /* USER CODE BEGIN Header_StartOutputTask */
 /**
 * @brief Function implementing the OutputTask thread.
-* @details
-* Applies FSM decisions to actuators (LED, buzzer, servo) and performs
-* periodic buzzer pattern updates even when no new decision arrives.
 * @param argument: Not used
 * @retval None
 */
@@ -863,11 +989,6 @@ void StartOutputTask(void *argument)
             printf("  [OUTPUT] LOCK: Security engaged!\r\n");
             Actuator_SetState(ACTUATOR_STATE_LOCK);
             break;
-
-          case FSM_DECISION_FAULT:
-            printf("  [OUTPUT] HW_FAULT: Sensor communication failure\r\n");
-            Actuator_SetState(ACTUATOR_STATE_HW_FAULT);
-            break;
             
           default:
             break;
@@ -898,6 +1019,7 @@ void StartDistanceTask(void *argument)
   /* USER CODE BEGIN DistanceTask */
   static bool vl53l1x_ok = false;
   static bool scan_done = false;
+  static uint32_t vl53_init_fail_streak = 0U;
   static uint16_t last_distance = 0;
   static uint16_t distance_hist[DISTANCE_MEDIAN_WINDOW] = {0U, 0U, 0U};
   static uint8_t distance_hist_count = 0U;
@@ -912,23 +1034,10 @@ void StartDistanceTask(void *argument)
   {
     /* Scan I2C bus once at startup (only on first attempt) */
     if (!scan_done && !vl53l1x_ok) {
-      printf("Starting I2C1 bus scan...\r\n");
-      osDelay(50);
-      uint8_t found_count = 0;
-      for (uint8_t addr = 0x08; addr < 0x78; addr++) {
-        if (HAL_I2C_IsDeviceReady(&hi2c1, addr << 1, 1, 5) == HAL_OK) {
-          printf("  Found device at 0x%02X\r\n", addr);
-          found_count++;
-        }
-        if (addr % 16 == 0) {
-          osDelay(1);  // Yield to other tasks periodically
-        }
-      }
-      printf("Scan complete.\r\n");
-      if (found_count == 0) {
-        printf("  No I2C devices detected in early scan (may still be booting).\r\n");
-      } else {
-        printf("  Total devices found: %u\r\n", found_count);
+      uint8_t found_count = i2c1_scan_bus_once();
+      if (found_count == 0U) {
+        printf("  Early scan found no devices; trying one bus recovery.\r\n");
+        (void)i2c1_bus_recover_and_reinit("startup scan empty");
       }
       scan_done = true;
       osDelay(100);
@@ -944,31 +1053,38 @@ void StartDistanceTask(void *argument)
 
       printf("Initializing VL53L1X...\r\n");
 
-      status = VL53L1_WaitDeviceBooted(dev);
-      if (status == VL53L1_ERROR_NONE) {
-        status = VL53L1_DataInit(dev);
+      if (!app_i2c1_lock(500U)) {
+        printf("VL53L1X init skipped: mutex timeout\r\n");
+        osDelay(50);
+        continue;
       }
-      if (status == VL53L1_ERROR_NONE) {
-        status = VL53L1_StaticInit(dev);
-      }
-      if (status == VL53L1_ERROR_NONE) {
-        status = VL53L1_SetDistanceMode(dev, VL53L1_DISTANCEMODE_LONG);
-      }
-      if (status == VL53L1_ERROR_NONE) {
-        status = VL53L1_SetMeasurementTimingBudgetMicroSeconds(dev, VL53L1X_TIMING_BUDGET_US);
-      }
-      if (status == VL53L1_ERROR_NONE) {
-        status = VL53L1_SetInterMeasurementPeriodMilliSeconds(dev, VL53L1X_INTERMEASUREMENT_MS);
-      }
-      if (status == VL53L1_ERROR_NONE) {
-        status = VL53L1_StartMeasurement(dev);
-      }
+
+      status = vl53l1_init_sequence(dev);
+      app_i2c1_unlock();
 
       if (status == VL53L1_ERROR_NONE) {
         printf("VL53L1X ready (LONG mode, 10Hz)\r\n");
         vl53l1x_ok = true;
+        vl53_init_fail_streak = 0U;
+
+        if (!displayTaskStarted) {
+          if (!display_task_start(&hi2c1)) {
+            printf("[APP] WARNING: DisplayTask creation failed\r\n");
+          } else {
+            displayTaskStarted = true;
+            printf("[APP] DisplayTask started after VL53L1X ready\r\n");
+          }
+        }
       } else {
-        printf("VL53L1X init failed (status=%d)\r\n", (int)status);
+        vl53_init_fail_streak++;
+        printf("VL53L1X init failed (status=%d, streak=%lu, i2c_err=0x%08lX, i2c_state=%lu)\r\n",
+               (int)status,
+               (unsigned long)vl53_init_fail_streak,
+               (unsigned long)HAL_I2C_GetError(&hi2c1),
+               (unsigned long)HAL_I2C_GetState(&hi2c1));
+        if ((vl53_init_fail_streak % I2C_RECOVERY_FAIL_THRESHOLD) == 0U) {
+          (void)i2c1_bus_recover_and_reinit("repeated VL53 init failure");
+        }
         osDelay(1000);
         continue;
       }
@@ -977,6 +1093,12 @@ void StartDistanceTask(void *argument)
     if (vl53l1x_ok) {
       uint8_t data_ready = 0U;
       VL53L1_RangingMeasurementData_t measurement;
+
+      if (!app_i2c1_lock(100U)) {
+        osDelay(10);
+        continue;
+      }
+
       VL53L1_Error status = VL53L1_GetMeasurementDataReady(dev, &data_ready);
       if ((status == VL53L1_ERROR_NONE) && data_ready) {
         status = VL53L1_GetRangingMeasurementData(dev, &measurement);
@@ -984,6 +1106,7 @@ void StartDistanceTask(void *argument)
           /* Ignore invalid range statuses; they are common during startup/recovery. */
           if (measurement.RangeStatus != 0U) {
             (void)VL53L1_ClearInterruptAndStartMeasurement(dev);
+            app_i2c1_unlock();
             osDelay(10);
             continue;
           }
@@ -1019,6 +1142,7 @@ void StartDistanceTask(void *argument)
         }
         (void)VL53L1_ClearInterruptAndStartMeasurement(dev);
       }
+      app_i2c1_unlock();
     }
     
     osDelay(50);
@@ -1040,7 +1164,7 @@ void StartAuthTask(void *argument)
   char cmd[32];
   uint32_t idx = 0U;
 
-  printf("[SEC] AuthTask ready. Use: AUTH <PIN> | SEC_STATUS | SEC_LOG | C\r\n");
+  printf("[SEC] AuthTask ready. Use: AUTH <PIN>\r\n");
 
   for (;;) {
     if (HAL_UART_Receive(&huart3, &rx, 1U, 20U) != HAL_OK) {
@@ -1100,11 +1224,8 @@ void StartAuthTask(void *argument)
                    (unsigned int)evt.arg1);
           }
         }
-      } else if (strcmp(cmd, "C") == 0) {
-        g_calibration_requested = true;
-        printf("[CAL] request accepted\r\n");
       } else {
-        printf("[SEC] Unknown command. Use: AUTH <PIN>, SEC_STATUS, SEC_LOG, C\r\n");
+        printf("[SEC] Unknown command. Use: AUTH <PIN>, SEC_STATUS, SEC_LOG\r\n");
       }
 
       continue;
@@ -1121,12 +1242,6 @@ void StartAuthTask(void *argument)
 /* USER CODE BEGIN Application */
 
 
-/**
- * @brief Emit periodic runtime health telemetry for FreeRTOS diagnostics.
- * @details
- * Reports per-task stack high-water marks and queue occupancy counters so
- * starvation, stack pressure, and queue backlogs can be detected online.
- */
 static void LogRtosHealth(void)
 {
   UBaseType_t default_hw = uxTaskGetStackHighWaterMark((TaskHandle_t)defaultTaskHandle);
@@ -1159,7 +1274,7 @@ static void LogRtosHealth(void)
     auth_count = osMessageQueueGetCount(authQueueHandle);
   }
 
-  printf("{\"type\":\"RTOS\",\"tick\":%lu,\"hw\":{\"D\":%lu,\"S\":%lu,\"P\":%lu,\"F\":%lu,\"O\":%lu,\"Dist\":%lu,\"Auth\":%lu},\"q\":{\"S\":%lu,\"P\":%lu,\"O\":%lu,\"Dist\":%lu,\"Auth\":%lu},\"fault\":%lu}\r\n",
+  printf("RTOS tick=%lu | HW stk: D=%lu S=%lu P=%lu F=%lu O=%lu Dist=%lu Auth=%lu | Q: S=%lu P=%lu O=%lu Dist=%lu Auth=%lu\r\n",
          (unsigned long)osKernelGetTickCount(),
          (unsigned long)default_hw,
          (unsigned long)sensor_hw,
@@ -1172,46 +1287,7 @@ static void LogRtosHealth(void)
          (unsigned long)processing_count,
          (unsigned long)output_count,
          (unsigned long)distance_count,
-         (unsigned long)auth_count,
-         (unsigned long)g_hw_fault_flags);
-}
-
-static void TelemetryEmitMl(float score,
-                            float baseline,
-                            float threshold,
-                            uint32_t streak,
-                            uint32_t motion_mg,
-                            uint16_t distance_mm,
-                            bool hit,
-                            bool calib_mode)
-{
-#if TELEMETRY_JSON
-  printf("{\"type\":\"ML\",\"tick\":%lu,\"score\":%.3f,\"baseline\":%.3f,\"threshold\":%.3f,\"streak\":%lu,\"motion_mg\":%lu,\"distance_mm\":%u,\"hit\":%u,\"calib\":%u,\"fft_dom_hz\":%.2f,\"fft_band\":%.2f}\r\n",
-         (unsigned long)osKernelGetTickCount(),
-         score,
-         baseline,
-         threshold,
-         (unsigned long)streak,
-         (unsigned long)motion_mg,
-         (unsigned int)distance_mm,
-         (unsigned int)hit,
-    (unsigned int)calib_mode,
-    fe_get_fft_dominant_hz(),
-    fe_get_fft_band_energy());
-#else
-  printf("CSV,ML,%lu,%.3f,%.3f,%.3f,%lu,%lu,%u,%u,%u,%.2f,%.2f\r\n",
-         (unsigned long)osKernelGetTickCount(),
-         score,
-         baseline,
-         threshold,
-         (unsigned long)streak,
-         (unsigned long)motion_mg,
-         (unsigned int)distance_mm,
-         (unsigned int)hit,
-    (unsigned int)calib_mode,
-    fe_get_fft_dominant_hz(),
-    fe_get_fft_band_energy());
-#endif
+         (unsigned long)auth_count);
 }
 /* USER CODE END Application */
 

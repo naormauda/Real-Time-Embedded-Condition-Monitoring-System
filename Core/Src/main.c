@@ -23,8 +23,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <stdio.h>
-#include "lis3dsh_driver.h"
-#include "vl53l1x_driver.h"
+/* Direct SPI test (no driver) */
 
 /* USER CODE END Includes */
 
@@ -65,9 +64,8 @@ static void MX_USART3_UART_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_I2C1_Init(void);
 static void MX_TIM3_Init(void);
-static void MX_IWDG_Init(void);
 /* USER CODE BEGIN PFP */
-static void RunPowerOnSelfTest(void);
+static void I2C1_BusRecover(void);
 
 /* USER CODE END PFP */
 
@@ -79,6 +77,39 @@ int _write(int file, char *ptr, int len)
   (void)file;
   HAL_UART_Transmit(&huart3, (uint8_t*)ptr, len, HAL_MAX_DELAY);
   return len;
+}
+
+static void I2C1_BusRecover(void)
+{
+  GPIO_InitTypeDef gpio = {0};
+
+  /* PB8=SCL, PB9=SDA per HAL MSP config. */
+  __HAL_RCC_GPIOB_CLK_ENABLE();
+
+  gpio.Pin = GPIO_PIN_8 | GPIO_PIN_9;
+  gpio.Mode = GPIO_MODE_OUTPUT_OD;
+  gpio.Pull = GPIO_PULLUP;
+  gpio.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOB, &gpio);
+
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, GPIO_PIN_SET);
+
+  /* If SDA is held low by a stuck slave, pulse SCL to release bus. */
+  for (uint32_t i = 0; i < 9U; i++) {
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_RESET);
+    HAL_Delay(1);
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_SET);
+    HAL_Delay(1);
+  }
+
+  /* STOP-like condition, leave bus idle high. */
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, GPIO_PIN_RESET);
+  HAL_Delay(1);
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_SET);
+  HAL_Delay(1);
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, GPIO_PIN_SET);
+  HAL_Delay(1);
 }
 
 /* USER CODE END 0 */
@@ -113,12 +144,13 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_USART3_UART_Init();
+  printf("[BOOT] UART ready\r\n");
   MX_SPI1_Init();
+  I2C1_BusRecover();
+  printf("[BOOT] I2C1 bus recovery complete\r\n");
   MX_I2C1_Init();
   MX_TIM3_Init();
   /* USER CODE BEGIN 2 */
-  RunPowerOnSelfTest();
-  MX_IWDG_Init();
   /* USER CODE END 2 */
 
   /* Init scheduler */
@@ -426,25 +458,6 @@ static void MX_TIM3_Init(void)
 }
 
 /**
-  * @brief IWDG Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_IWDG_Init(void)
-{
-  /* Enable write access and configure ~2s timeout: 32kHz/64 = 500Hz; 1000 ticks ~2s. */
-  IWDG->KR = 0x5555U;
-  IWDG->PR = 0x04U;
-  IWDG->RLR = 1000U;
-
-  /* Start watchdog and perform initial reload. */
-  IWDG->KR = 0xCCCCU;
-  IWDG->KR = 0xAAAAU;
-
-  printf("[POST] IWDG enabled (approx 2s timeout)\r\n");
-}
-
-/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -506,65 +519,6 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-
-static void RunPowerOnSelfTest(void)
-{
-  bool lis_ok = false;
-  bool tof_ok = false;
-
-  printf("[POST] Starting power-on self-test\r\n");
-
-  LIS3DSH_Handle_t lis = {0};
-  const LIS3DSH_Config_t lis_cfg = {
-    .hspi = &hspi1,
-    .cs_port = LIS3DSH_CS_GPIO_Port,
-    .cs_pin = LIS3DSH_CS_Pin,
-    .odr = LIS3DSH_ODR_100_HZ,
-    .full_scale = LIS3DSH_FS_2G,
-    .calib_samples = 8,
-    .ema_shift = 2,
-  };
-
-  uint8_t lis_id = 0U;
-  lis_ok = LIS3DSH_Init(&lis, &lis_cfg) && LIS3DSH_ReadWhoAmI(&lis, &lis_id);
-
-  if (lis_ok) {
-    printf("[POST] LIS3DSH: OK (WHO_AM_I=0x%02X)\r\n", lis_id);
-  } else {
-    printf("[POST] LIS3DSH: FAIL\r\n");
-  }
-
-  if (HAL_I2C_IsDeviceReady(&hi2c1, (uint16_t)(VL53L1X_I2C_ADDR << 1), 2, 20) == HAL_OK) {
-    uint8_t tof_id = 0U;
-    if (HAL_I2C_Mem_Read(&hi2c1,
-                         (uint16_t)(VL53L1X_I2C_ADDR << 1),
-                         VL53L1X_WHO_AM_I,
-                         I2C_MEMADD_SIZE_16BIT,
-                         &tof_id,
-                         1,
-                         50) == HAL_OK) {
-      tof_ok = (tof_id == VL53L1X_WHO_AM_I_VAL);
-      if (tof_ok) {
-        printf("[POST] VL53L1X: OK (WHO_AM_I=0x%02X)\r\n", tof_id);
-      } else {
-        printf("[POST] VL53L1X: FAIL (WHO_AM_I=0x%02X)\r\n", tof_id);
-      }
-    } else {
-      printf("[POST] VL53L1X: FAIL (WHO_AM_I read)\r\n");
-    }
-  } else {
-    printf("[POST] VL53L1X: FAIL (I2C not ready)\r\n");
-  }
-
-  printf("[POST] Summary: LIS3DSH=%s VL53L1X=%s\r\n",
-         lis_ok ? "OK" : "FAIL",
-         tof_ok ? "OK" : "FAIL");
-}
-
-void IWDG_RefreshKick(void)
-{
-  IWDG->KR = 0xAAAAU;
-}
 
 /* USER CODE END 4 */
 

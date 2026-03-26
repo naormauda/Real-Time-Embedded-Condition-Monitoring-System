@@ -8,6 +8,16 @@
 extern "C" {
 #endif
 
+/* Set to 1 to persist security state in flash, 0 for RAM-only runtime state. */
+#ifndef SECURITY_POLICY_ENABLE_FLASH_STORE
+#define SECURITY_POLICY_ENABLE_FLASH_STORE 1
+#endif
+
+/* Optional one-time recovery: erase and reinitialize security store at boot. */
+#ifndef SECURITY_POLICY_FORMAT_STORE_ON_BOOT
+#define SECURITY_POLICY_FORMAT_STORE_ON_BOOT 0
+#endif
+
 typedef enum {
   SECURITY_AUTH_OK = 0,
   SECURITY_AUTH_FAIL = 1,

@@ -29,6 +29,7 @@ extern "C" {
 #include "task.h"
 #include "main.h"
 #include "cmsis_os2.h"
+#include <stdbool.h>
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -64,6 +65,8 @@ extern osThreadId_t AuthTaskHandle;
 
 /* Exported function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
+bool app_i2c1_lock(uint32_t timeout);
+void app_i2c1_unlock(void);
 
 /* USER CODE END FunctionPrototypes */
 

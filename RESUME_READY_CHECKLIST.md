@@ -67,6 +67,17 @@ Mark `GO` only if all `R1..R10` are `DONE`.
 
 **Progress:** R1, R2, R3, R4, R5, R6, R7, R8, R10 = DONE (9/10). Remaining: R9 (capture/upload demo media).
 
+## Final Demo Done Criteria (Minimal)
+
+Use this as the finish line for the current milestone (LED + buzzer scope, lock timing unchanged).
+
+- [ ] D1 Boot reliability: 3 consecutive cold boots complete without sensor init failure.
+- [ ] D2 State transitions: capture one clean serial sequence showing `IDLE -> ALERT -> LOCK`.
+- [ ] D3 Output behavior: LED mapping and buzzer pattern match each FSM state in one recorded run.
+- [ ] D4 Clear path: show authenticated clear from LOCK and return to IDLE under quiet-window policy.
+- [ ] D5 Evidence capture: add demo media files to `docs/assets/demo/` and update `docs/demo_assets.md`.
+- [ ] D6 Final consistency pass: README hardware/output sections match current scope and pin map.
+
 ## Architectural Additions Inventory
 
 These 5 structural enhancements form the foundation of the project's fault-tolerant, ML-informed threat detection model:

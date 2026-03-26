@@ -29,14 +29,12 @@ static TIM_HandleTypeDef* htim_pwm = NULL;
 static BuzzerPattern_t current_buzzer_pattern = BUZZER_OFF;
 static uint32_t buzzer_toggle_counter = 0;
 static bool buzzer_state = false;
-static ActuatorState_t current_state = ACTUATOR_STATE_IDLE;
-static uint32_t fault_blink_counter = 0;
-static bool fault_led_on = false;
 
 /* Private function prototypes -----------------------------------------------*/
 static void Buzzer_On(void);
 static void Buzzer_Off(void);
 static uint16_t Servo_PositionToPulse(ServoPosition_t position);
+static void Buzzer_ConfigTimerForTone(void);
 
 /* Exported functions --------------------------------------------------------*/
 
@@ -51,6 +49,8 @@ bool Actuator_Init(TIM_HandleTypeDef* htim_buzzer_servo)
   }
   
   htim_pwm = htim_buzzer_servo;
+
+  Buzzer_ConfigTimerForTone();
   
   printf("[ACTUATOR] TIM3 Prescaler=%lu, Period=%lu\r\n", 
          htim_pwm->Init.Prescaler, htim_pwm->Init.Period);
@@ -77,9 +77,6 @@ bool Actuator_Init(TIM_HandleTypeDef* htim_buzzer_servo)
 void Actuator_SetState(ActuatorState_t state)
 {
   printf("[ACTUATOR] Setting state: %d\r\n", state);
-  current_state = state;
-  fault_blink_counter = 0;
-  fault_led_on = false;
   
   switch (state) {
     case ACTUATOR_STATE_IDLE:
@@ -123,16 +120,6 @@ void Actuator_SetState(ActuatorState_t state)
       Actuator_Servo_SetPosition(SERVO_LOCKED);
       printf("[ACTUATOR] LOCK: Red LED ON (PC6)\r\n");
       break;
-
-    case ACTUATOR_STATE_HW_FAULT:
-      /* Distinct fault pattern: flashing red LED, no motion actuation. */
-      Actuator_LED_Green(false);
-      Actuator_LED_Yellow(false);
-      Actuator_LED_Red(false);
-      Actuator_Buzzer_SetPattern(BUZZER_OFF);
-      Actuator_Servo_SetPosition(SERVO_LOCKED);
-      printf("[ACTUATOR] HW_FAULT: Red LED flashing\r\n");
-      break;
       
     default:
       // Default to IDLE
@@ -173,6 +160,15 @@ void Actuator_LED_Red(bool on)
  */
 void Actuator_Buzzer_SetPattern(BuzzerPattern_t pattern)
 {
+#if !ACTUATOR_ENABLE_BUZZER
+  (void)pattern;
+  current_buzzer_pattern = BUZZER_OFF;
+  buzzer_toggle_counter = 0;
+  buzzer_state = false;
+  Buzzer_Off();
+  return;
+#endif
+
   current_buzzer_pattern = pattern;
   buzzer_toggle_counter = 0;
   
@@ -198,6 +194,11 @@ void Actuator_Buzzer_SetPattern(BuzzerPattern_t pattern)
  */
 void Actuator_Servo_SetPosition(ServoPosition_t position)
 {
+#if !ACTUATOR_ENABLE_SERVO
+  (void)position;
+  return;
+#endif
+
   if (htim_pwm == NULL) {
     printf("[SERVO] ERROR: htim_pwm is NULL!\r\n");
     return;
@@ -220,17 +221,6 @@ void Actuator_Servo_SetPosition(ServoPosition_t position)
  */
 void Actuator_Buzzer_Update(void)
 {
-  if (current_state == ACTUATOR_STATE_HW_FAULT) {
-    /* 50 ms update period -> toggle every 5 calls = 250 ms (2 Hz blink). */
-    fault_blink_counter++;
-    if (fault_blink_counter >= 5U) {
-      fault_led_on = !fault_led_on;
-      Actuator_LED_Red(fault_led_on);
-      fault_blink_counter = 0U;
-    }
-    return;
-  }
-
   buzzer_toggle_counter++;
   
   switch (current_buzzer_pattern) {
@@ -268,7 +258,14 @@ void Actuator_Buzzer_Update(void)
  */
 static void Buzzer_On(void)
 {
+#if !ACTUATOR_ENABLE_BUZZER
+  return;
+#endif
+
   if (htim_pwm == NULL) return;
+
+  /* 50% duty gives a clean tone for passive buzzers and works for active modules too. */
+  __HAL_TIM_SET_COMPARE(htim_pwm, TIM_CHANNEL_2, (htim_pwm->Init.Period + 1U) / 2U);
   
   // Start PWM on TIM3_CH2 (PC7)
   HAL_TIM_PWM_Start(htim_pwm, TIM_CHANNEL_2);
@@ -279,6 +276,10 @@ static void Buzzer_On(void)
  */
 static void Buzzer_Off(void)
 {
+#if !ACTUATOR_ENABLE_BUZZER
+  return;
+#endif
+
   if (htim_pwm == NULL) return;
   
   // Stop PWM on TIM3_CH2 (PC7)
@@ -304,4 +305,44 @@ static uint16_t Servo_PositionToPulse(ServoPosition_t position)
     default:
       return SERVO_PULSE_UNLOCKED_US;
   }
+}
+
+/**
+ * @brief Configure timer for buzzer tone generation when servo is disabled
+ */
+static void Buzzer_ConfigTimerForTone(void)
+{
+#if ACTUATOR_ENABLE_BUZZER && !ACTUATOR_ENABLE_SERVO
+  TIM_OC_InitTypeDef sConfigOC = {0};
+
+  if (htim_pwm == NULL) {
+    return;
+  }
+
+  /* Keep existing prescaler (1 us tick), retune ARR for tone frequency. */
+  uint32_t tone_period = (1000000U / BUZZER_FREQUENCY_HZ);
+  if (tone_period < 2U) {
+    tone_period = 2U;
+  }
+
+  HAL_TIM_PWM_Stop(htim_pwm, TIM_CHANNEL_2);
+  htim_pwm->Init.Period = (uint32_t)(tone_period - 1U);
+  if (HAL_TIM_PWM_Init(htim_pwm) != HAL_OK) {
+    printf("[BUZZER] WARN: PWM re-init failed\r\n");
+    return;
+  }
+
+  sConfigOC.OCMode = TIM_OCMODE_PWM1;
+  sConfigOC.Pulse = (tone_period / 2U);
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+  if (HAL_TIM_PWM_ConfigChannel(htim_pwm, &sConfigOC, TIM_CHANNEL_2) != HAL_OK) {
+    printf("[BUZZER] WARN: CH2 config failed\r\n");
+    return;
+  }
+
+  printf("[BUZZER] TIM3 tone mode: %lu Hz (ARR=%lu)\r\n",
+         (unsigned long)BUZZER_FREQUENCY_HZ,
+         (unsigned long)htim_pwm->Init.Period);
+#endif
 }

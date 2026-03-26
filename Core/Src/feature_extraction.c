@@ -8,21 +8,6 @@
 #include <math.h>
 #include <stdio.h>
 
-#if defined(__has_include)
-#if __has_include("arm_math.h")
-#include "arm_math.h"
-#define FE_HAS_CMSIS_DSP 1
-#endif
-#endif
-
-#ifndef FE_HAS_CMSIS_DSP
-#define FE_HAS_CMSIS_DSP 0
-#endif
-
-#define FE_SAMPLE_RATE_HZ 100.0f
-#define FE_FFT_SIZE 128U
-#define FE_PI 3.14159265358979323846f
-
 /*============================================================================
  * Module State
  ============================================================================*/
@@ -56,10 +41,6 @@ typedef struct {
 
     /* Output feature vector (12 elements) */
     float features[FE_NUM_FEATURES];
-
-    /* Spectral telemetry (not part of model input vector yet) */
-    float fft_dominant_hz;
-    float fft_band_energy;
 } fe_context_t;
 
 static fe_context_t g_fe = {0};
@@ -100,70 +81,6 @@ static inline float compute_rms(float sum_sq, uint32_t count) {
  */
 static inline float compute_peak_to_peak(float min, float max) {
     return max - min;
-}
-
-static void compute_fft_telemetry(void) {
-    float dominant_hz = 0.0f;
-    float band_energy = 0.0f;
-
-#if FE_HAS_CMSIS_DSP
-    float fft_in[FE_FFT_SIZE] = {0};
-    float fft_out[FE_FFT_SIZE] = {0};
-    arm_rfft_fast_instance_f32 rfft;
-
-    for (uint32_t i = 0; i < FE_WINDOW_SIZE; i++) {
-        fft_in[i] = g_fe.x_buffer[i];
-    }
-
-    if (arm_rfft_fast_init_f32(&rfft, FE_FFT_SIZE) == ARM_MATH_SUCCESS) {
-        arm_rfft_fast_f32(&rfft, fft_in, fft_out, 0);
-        float max_mag = 0.0f;
-        uint32_t max_bin = 1U;
-
-        for (uint32_t k = 1U; k < (FE_FFT_SIZE / 2U); k++) {
-            float re = fft_out[2U * k];
-            float im = fft_out[(2U * k) + 1U];
-            float mag = sqrtf((re * re) + (im * im));
-
-            if (k <= 20U) {
-                band_energy += mag;
-            }
-
-            if (mag > max_mag) {
-                max_mag = mag;
-                max_bin = k;
-            }
-        }
-
-        dominant_hz = ((float)max_bin * FE_SAMPLE_RATE_HZ) / (float)FE_FFT_SIZE;
-    }
-#else
-    /* Fallback coarse DFT for environments without CMSIS-DSP package. */
-    float max_mag = 0.0f;
-    uint32_t max_bin = 1U;
-
-    for (uint32_t k = 1U; k <= 20U; k++) {
-        float re = 0.0f;
-        float im = 0.0f;
-        for (uint32_t n = 0; n < FE_WINDOW_SIZE; n++) {
-            float angle = 2.0f * FE_PI * (float)k * (float)n / (float)FE_WINDOW_SIZE;
-            re += g_fe.x_buffer[n] * cosf(angle);
-            im -= g_fe.x_buffer[n] * sinf(angle);
-        }
-
-        float mag = sqrtf((re * re) + (im * im));
-        band_energy += mag;
-        if (mag > max_mag) {
-            max_mag = mag;
-            max_bin = k;
-        }
-    }
-
-    dominant_hz = ((float)max_bin * FE_SAMPLE_RATE_HZ) / (float)FE_WINDOW_SIZE;
-#endif
-
-    g_fe.fft_dominant_hz = dominant_hz;
-    g_fe.fft_band_energy = band_energy;
 }
 
 /**
@@ -208,8 +125,6 @@ static void compute_features(void) {
     g_fe.features[FE_Z_VAR] = compute_variance(g_fe.z_sum, g_fe.z_sum_sq, n);
     g_fe.features[FE_Z_RMS] = compute_rms(g_fe.z_sum_sq, n);
     g_fe.features[FE_Z_PEAK] = compute_peak_to_peak(g_fe.z_min, g_fe.z_max);
-
-    compute_fft_telemetry();
 }
 
 /*============================================================================
@@ -320,12 +235,4 @@ int fe_format_features(char *buffer, int size) {
         g_fe.features[FE_Z_MEAN], g_fe.features[FE_Z_VAR],
         g_fe.features[FE_Z_RMS], g_fe.features[FE_Z_PEAK]
     );
-}
-
-float fe_get_fft_dominant_hz(void) {
-    return g_fe.fft_dominant_hz;
-}
-
-float fe_get_fft_band_energy(void) {
-    return g_fe.fft_band_energy;
 }

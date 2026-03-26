@@ -1,10 +1,17 @@
 # Real-Time Embedded Condition Monitoring System  
 ### with On-Device Anomaly Detection
 
+![Language C](https://img.shields.io/badge/Language-C-00599C)
+![Platform STM32H563](https://img.shields.io/badge/Platform-STM32H563-03234B)
+![RTOS FreeRTOS](https://img.shields.io/badge/RTOS-FreeRTOS-2C3E50)
+![Architecture ARM Cortex-M33](https://img.shields.io/badge/CPU-ARM%20Cortex--M33-1F6FEB)
+![License MIT](https://img.shields.io/badge/License-MIT-green)
+
 ## 📖 Project Overview
 
-This project implements a **real-time embedded condition monitoring system**
-designed to run entirely on-device (edge), without reliance on cloud processing.
+A high-performance condition monitoring system designed for real-time anomaly detection in industrial machinery, leveraging the ARM Cortex-M33 architecture and FreeRTOS for deterministic execution.
+
+This project runs entirely on-device (edge), without reliance on cloud processing.
 
 The system continuously monitors sensor data (vibration, motion, events),
 learns normal behavior patterns, detects anomalies in real time,
@@ -58,7 +65,7 @@ flowchart LR
   C --> Q3[processingQueue]
   Q3 --> D[FsmTask\nIDLE/ALERT/LOCK]
   D --> Q4[outputQueue]
-  Q4 --> E[OutputTask\nLED/Buzzer/Servo]
+  Q4 --> E[OutputTask\nLED/Buzzer]
   F[AuthTask UART] --> D
 ```
 
@@ -109,6 +116,15 @@ Expected asset paths:
 - `docs/assets/demo/lock_state.png`
 - `docs/assets/demo/auth_success.png`
 - `docs/assets/demo/lock_clear.png`
+- `docs/assets/demo/serial_plotter_fft_spike.png`
+- `docs/assets/demo/serial_plotter_idle_baseline.png`
+
+### Visual Proof Of Real-Time Performance
+
+Required visual evidence for review:
+- Serial Plotter screenshot showing FFT/dominant-frequency spike during induced vibration.
+- Serial Plotter screenshot showing idle baseline signal stability.
+- The real-time task design table in this README (period, priority, WCET, queue depth).
 
 Recommended final demo flow:
 1. Show heartbeat/IDLE telemetry.
@@ -152,7 +168,7 @@ on a resource-constrained microcontroller.
 - Event-driven finite state machine (IDLE/ALERT/LOCK)
 - Dedicated hardware-fault mode with flashing red LED alert
 - Sensor-to-actuator latency: <100ms end-to-end
-- Immediate local reaction (LEDs, buzzer, servo lock)
+- Immediate local reaction (LEDs, buzzer)
 - Fail-secure state transitions (authenticated unlock required)
 
 **Telemetry & Control:**
@@ -208,7 +224,7 @@ The system is structured into layered components:
   State management and system logic
 
 - **Output / UI Tasks**  
-  LEDs, buzzer, servo lock, display
+  LEDs, buzzer, display
 
 Each component has a clearly defined responsibility to ensure
 deterministic behavior and maintainability.
@@ -576,10 +592,9 @@ A queue consistently near capacity, or a stack value trending toward zero, is an
   - Frequency: 2 kHz
   - Patterns: Off, Slow beep (1 Hz), Fast beep (~3 Hz), Continuous
 
-- ✅ **Servo Motor** - Lock mechanism (PWM)
-  - Pin: PA6 (TIM3_CH1)
-  - Standard hobby servo (50 Hz PWM)
-  - Positions: 0° (unlocked), 90° (locked)
+- ⏸️ **Servo Motor** - Out of current scope (disabled)
+  - Optional path retained in code behind compile-time flag
+  - Current lock indication uses LED + buzzer only
 
 **Planned:**
 - ⏳ OLED display (I2C1 @ 400kHz)
@@ -896,17 +911,14 @@ python test_security_policy.py
 | Yellow LED | PE4 | GPIO Output | ALERT state indicator (Morpho CN11-6) |
 | Red LED | PC6 | GPIO Output | LOCK state indicator (Arduino D5) |
 | Buzzer | PC7 | TIM3_CH2 PWM | Active buzzer or passive with driver |
-| Servo | PA6 | TIM3_CH1 PWM | Standard 50Hz servo (SG90, MG90S, etc.) |
 
 **Power:**
 - All components: 3.3V from NUCLEO board
-- Servo: May require external 5V supply if high torque
 - Common GND for all components
 
 **Wiring Notes:**
 - LEDs: Use 220Ω-330Ω current-limiting resistors
 - Buzzer: Active buzzer can connect directly; passive buzzer may need NPN transistor driver
-- Servo: Red wire = 5V, Brown/Black = GND, Orange/Yellow = Signal (PA6)
 
 ---
 
@@ -1017,7 +1029,7 @@ python test_security_policy.py
 → [ProcessingTask] Features ready: [ -8.4, 123.5, 45.2, ... ]
 → [ProcessingTask] ML Score: 0.234 (NORMAL)
 → [FsmTask] State: IDLE → ALERT (proximity: 450mm, motion: 1650mg)
-→ [OutputTask] LEDs: [OFF, ON, OFF] Buzzer: SLOW_BEEP Servo: UNLOCKED
+→ [OutputTask] LEDs: [OFF, ON, OFF] Buzzer: SLOW_BEEP
 ```
 
 ---
@@ -1129,7 +1141,7 @@ python test_security_policy.py
 - ✅ **Actuator Driver Module** (`actuator_driver.h/.c`)
   - LED control API for 3-state indicators
   - PWM buzzer control with pattern support (off, slow beep, fast beep, continuous)
-  - Servo PWM control with position mapping
+  - Optional servo API retained but disabled in current build
   - Integrated state machine for coordinated actuator response
 
 - ✅ **GPIO Configuration**
@@ -1140,16 +1152,14 @@ python test_security_policy.py
 
 - ✅ **PWM Configuration (TIM3)**
   - Prescaler: 249 (1 MHz base clock from 250 MHz APB1)
-  - Period: 19999 (50 Hz output for servo, 20ms cycle)
-  - Channel 1 (PA6): Servo PWM (500-2500μs pulse width)
+  - Current build retunes TIM3 for buzzer tone output when servo is disabled
   - Channel 2 (PC7): Buzzer PWM (2 kHz tone when active)
 
 - ✅ **Hardware Integration & Testing**
   - All LEDs verified working in their respective states
   - Buzzer PWM signal verified at correct frequency
-  - Servo PWM signal verified with proper pulse widths
   - Actuator commands properly coordinated via OutputTask
-  - 5-state to actuator mapping validated on hardware
+  - State-to-actuator mapping validated on hardware
 
 - ✅ **Debug Infrastructure**
   - Comprehensive logging for all actuator operations
@@ -1245,7 +1255,7 @@ python test_security_policy.py
 - 🔄 Next: integrate ML decisions into FSM and validate on hardware
 
 **Known Deferred Tasks:**
-- ⏳ Servo external power supply (requires 5V source, not NUCLEO 5V) - Phase 4
+- ⏳ Servo path intentionally parked (out of scope for current milestone)
 
 **Next Steps (Phase 3b):**
 
@@ -1294,7 +1304,7 @@ python test_security_policy.py
 /Core
   /Inc
     security_policy.h         ✅ Security module (auth, PIN mgmt, audit, tamper detection)
-    actuator_driver.h         ✅ Actuator driver (LEDs, buzzer, servo)
+    actuator_driver.h         ✅ Actuator driver (LEDs, buzzer, optional servo)
     feature_extraction.h      ✅ Feature extraction (time-domain statistics)
     ml_model.h                ✅ ML inference API (device-agnostic interface)
     generated_iforest_model.h ✅ Generated Isolation Forest model (auto-generated)
@@ -1374,30 +1384,23 @@ Future additions:
 
 **Key Design Decisions:**
 1. **Separate Actuator Driver Module**: Isolated `actuator_driver.h/.c` provides clean API for state-based actuator coordination
-2. **State-Centric Architecture**: Instead of individual LED/buzzer/servo commands, all actuators respond to system state (IDLE/ALERT/LOCK)
-3. **PWM Pulse Width Selection**: 
-   - Initial range (1000-2000μs) worked for some servo types
-   - Extended to 500-2500μs for broader compatibility (SG90, MG90S, etc.)
-   - Empirically determined through hardware testing
+2. **State-Centric Architecture**: Instead of individual LED/buzzer commands, outputs respond to system state (IDLE/ALERT/LOCK)
+3. **Scope Control**:
+  - Servo path intentionally disabled for current milestone
+  - Focused validation on LED and buzzer behavior
+  - Optional servo API retained for future extension
 
 **Hardware Discoveries:**
-1. **Servo Power Requirements**:
-   - NUCLEO 5V pin supplies max ~100mA
-   - Servos draw 200-500mA, especially during movement
-   - Result: Board brownout, ST-LINK connection loss if servo powered from NUCLEO
-   - **Solution**: Use external 5V power supply with common ground
-
-2. **GPIO Pin Allocation**:
+1. **GPIO Pin Allocation**:
    - PE4 (not PB7) is on Arduino connector CN9
    - PC6 works better than PB14 for red LED (stays on connector)
-   - PA6 is correct for servo (CN9, verified)
 
-3. **Format String Issues**:
+2. **Format String Issues**:
    - uint32_t variables require `%lu` format specifier
    - uint16_t variables require `%u` format specifier
    - Mixed with printf() on embedded systems caught by compiler warnings
 
-4. **CMake Integration**:
+3. **CMake Integration**:
    - User source files must be explicitly added to `target_sources()`
    - Include directories must be added to `target_include_directories()`
    - Default STM32CubeMX setup doesn't include application-specific files
@@ -1804,25 +1807,18 @@ See `tools/README.md` for detailed step-by-step instructions.
 
 ### Current Limitations
 
-1. **Servo Motor Power Supply**
-   - ❌ Servo currently non-functional
-   - Cause: NUCLEO-H563ZI 5V pin supplies only ~100mA; servo draws 200-500mA
-   - Connecting servo to on-board 5V causes board brownout
-   - **Fix**: Use external 5V power supply with common GND connection
-   - Timeline: Deferred for Phase 2
-
-2. **Buzzer Audio Verification**
+1. **Buzzer Audio Verification**
    - ⚠️ PWM signal verified at correct frequency (2kHz)
    - Audio output not yet tested on physical hardware
    - Expected behavior: Slow beeps (300ms on/700ms off) in ALERT, continuous in LOCK
 
-3. **ML Model Size Constraint**
+2. **ML Model Size Constraint**
    - Total available memory: 2MB Flash, 250KB SRAM
    - Current firmware: 123KB text, 39.6KB BSS
    - ML model budget: ~46KB remaining (limited to small quantized models)
    - TensorFlow Lite Micro integration planned but not yet implemented
 
-4. **Sensor Fusion Simplicity**
+3. **Sensor Fusion Simplicity**
    - Current design: Basic state machine (single OR two clauses)
    - No machine learning integration yet
    - No historical pattern recognition
@@ -1841,12 +1837,7 @@ See `tools/README.md` for detailed step-by-step instructions.
    - Replace rule-based FSM with ML-based decision making
    - Support OTA model updates if space permits
 
-3. **Hardware Fixes** (Phase 4)
-   - External 5V power supply and relay for servo
-   - Servo unlocking mechanism once power resolved
-   - Consider boost converter if power routing unavailable
-
-4. **Advanced Sensor Processing**
+3. **Advanced Sensor Processing**
    - Adaptive thresholds based on environment
    - Multi-sensor fusion weighting
    - Temporal pattern recognition

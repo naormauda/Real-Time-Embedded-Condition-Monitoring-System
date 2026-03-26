@@ -1,6 +1,7 @@
 #include "security_policy.h"
 
 #include <string.h>
+#include <stdio.h>
 
 #include "cmsis_os2.h"
 #include "main.h"
@@ -10,13 +11,33 @@
 #define SECURITY_STORE_MAGIC              0x53454355UL
 #define SECURITY_STORE_VERSION            1U
 
-/* Reserved: last flash sector (16KB) is dedicated to security state. */
-#define SECURITY_STORE_BASE_ADDR          0x081FC000UL
-#define SECURITY_STORE_SECTOR             FLASH_SECTOR_127
-#define SECURITY_STORE_BANK               FLASH_BANK_2
-#define SECURITY_STORE_TOTAL_SIZE         0x00004000UL
+/* Dedicated flash sector reserved by linker for security persistence. */
+#define SECURITY_STORE_SECTOR             FLASH_SECTOR_63
+#define SECURITY_STORE_BANK               FLASH_BANK_1
 #define SECURITY_STORE_SLOT_SIZE          512UL
-#define SECURITY_STORE_SLOT_COUNT         (SECURITY_STORE_TOTAL_SIZE / SECURITY_STORE_SLOT_SIZE)
+
+extern uint8_t __security_store_start__;
+extern uint8_t __security_store_end__;
+
+static uintptr_t sec_store_base_addr(void)
+{
+  return (uintptr_t)&__security_store_start__;
+}
+
+static uintptr_t sec_store_end_addr(void)
+{
+  return (uintptr_t)&__security_store_end__;
+}
+
+static uint32_t sec_store_total_size(void)
+{
+  return (uint32_t)(sec_store_end_addr() - sec_store_base_addr());
+}
+
+static uint32_t sec_store_slot_count(void)
+{
+  return sec_store_total_size() / SECURITY_STORE_SLOT_SIZE;
+}
 
 #define SECURITY_DEFAULT_PIN              "739251"
 #define SECURITY_AUTH_MAX_FAILS           5U
@@ -268,7 +289,8 @@ static uint8_t sec_constant_time_diff(const uint8_t *a, const uint8_t *b, size_t
 
 static bool sec_is_slot_erased(uint32_t slot_index)
 {
-  const uint32_t *ptr = (const uint32_t *)(SECURITY_STORE_BASE_ADDR + (slot_index * SECURITY_STORE_SLOT_SIZE));
+  const uintptr_t base = sec_store_base_addr();
+  const uint32_t *ptr = (const uint32_t *)(base + (slot_index * SECURITY_STORE_SLOT_SIZE));
   for (uint32_t i = 0U; i < (SECURITY_STORE_SLOT_SIZE / sizeof(uint32_t)); i++) {
     if (ptr[i] != 0xFFFFFFFFUL) {
       return false;
@@ -317,7 +339,7 @@ static bool sec_erase_store(void)
 
 static bool sec_program_slot(uint32_t slot_index, const security_snapshot_t *snap)
 {
-  if (slot_index >= SECURITY_STORE_SLOT_COUNT) {
+  if (slot_index >= sec_store_slot_count()) {
     return false;
   }
 
@@ -325,7 +347,7 @@ static bool sec_program_slot(uint32_t slot_index, const security_snapshot_t *sna
     return false;
   }
 
-  uint32_t base = SECURITY_STORE_BASE_ADDR + (slot_index * SECURITY_STORE_SLOT_SIZE);
+  uint32_t base = (uint32_t)(sec_store_base_addr() + (slot_index * SECURITY_STORE_SLOT_SIZE));
   const uint32_t *src = (const uint32_t *)snap;
 
   for (uint32_t off = 0U; off < SECURITY_STORE_SLOT_SIZE; off += 16U) {
@@ -342,13 +364,18 @@ static bool sec_program_slot(uint32_t slot_index, const security_snapshot_t *sna
 
 static bool sec_load_latest(security_snapshot_t *out_snap, uint32_t *out_slot)
 {
+  printf("[SEC] scan: begin\r\n");
   bool found = false;
   uint32_t best_seq = 0U;
   uint32_t best_slot = 0U;
   security_snapshot_t best = {0};
 
-  for (uint32_t i = 0U; i < SECURITY_STORE_SLOT_COUNT; i++) {
-    const security_snapshot_t *candidate = (const security_snapshot_t *)(SECURITY_STORE_BASE_ADDR + (i * SECURITY_STORE_SLOT_SIZE));
+  const uint32_t slot_count = sec_store_slot_count();
+  for (uint32_t i = 0U; i < slot_count; i++) {
+    if ((i % 8U) == 0U) {
+      printf("[SEC] scan: slot=%lu\r\n", (unsigned long)i);
+    }
+    const security_snapshot_t *candidate = (const security_snapshot_t *)(sec_store_base_addr() + (i * SECURITY_STORE_SLOT_SIZE));
     if (!sec_validate_snapshot(candidate)) {
       if (candidate->magic == SECURITY_STORE_MAGIC) {
         g_sec.snapshot.tamper_flags |= 0x01U;
@@ -366,11 +393,15 @@ static bool sec_load_latest(security_snapshot_t *out_snap, uint32_t *out_slot)
   }
 
   if (!found) {
+    printf("[SEC] scan: no valid slot\r\n");
     return false;
   }
 
   memcpy(out_snap, &best, sizeof(best));
   *out_slot = best_slot;
+  printf("[SEC] scan: loaded slot=%lu seq=%lu\r\n",
+         (unsigned long)best_slot,
+         (unsigned long)best_seq);
   return true;
 }
 
@@ -379,9 +410,14 @@ static bool sec_persist_locked(void)
   g_sec.snapshot.sequence++;
   sec_compute_crc(&g_sec.snapshot);
 
-  uint32_t next_slot = g_sec.loaded_slot_index + 1U;
+#if !SECURITY_POLICY_ENABLE_FLASH_STORE
+  return true;
+#else
 
-  if ((next_slot >= SECURITY_STORE_SLOT_COUNT) || (!sec_is_slot_erased(next_slot))) {
+  uint32_t next_slot = g_sec.loaded_slot_index + 1U;
+  const uint32_t slot_count = sec_store_slot_count();
+
+  if ((next_slot >= slot_count) || (!sec_is_slot_erased(next_slot))) {
     if (!sec_erase_store()) {
       return false;
     }
@@ -394,6 +430,7 @@ static bool sec_persist_locked(void)
 
   g_sec.loaded_slot_index = next_slot;
   return true;
+#endif
 }
 
 static void sec_append_event_locked(uint8_t code, uint8_t arg0, uint16_t arg1, uint32_t tick)
@@ -412,23 +449,86 @@ static void sec_append_event_locked(uint8_t code, uint8_t arg0, uint16_t arg1, u
 
 bool security_policy_init(void)
 {
+  printf("[SEC] init: enter\r\n");
   if (g_sec.initialized) {
+    printf("[SEC] init: already initialized\r\n");
     return true;
   }
 
   osMutexAttr_t attr = { .name = "securityPolicyMutex" };
   g_sec.mutex = osMutexNew(&attr);
   if (g_sec.mutex == NULL) {
+    printf("[SEC] init: osMutexNew failed\r\n");
+    return false;
+  }
+  printf("[SEC] init: mutex created\r\n");
+
+  const uintptr_t store_base = sec_store_base_addr();
+  const uint32_t store_size = sec_store_total_size();
+    printf("[SEC] init: store base=0x%08lX end=0x%08lX size=%lu slots=%lu\r\n",
+      (unsigned long)store_base,
+      (unsigned long)sec_store_end_addr(),
+      (unsigned long)store_size,
+      (unsigned long)sec_store_slot_count());
+  if ((store_size < SECURITY_STORE_SLOT_SIZE) ||
+      ((store_size % SECURITY_STORE_SLOT_SIZE) != 0U) ||
+      ((store_base % 16U) != 0U)) {
+    printf("[SEC] init: invalid store region base=0x%08lX size=%lu\r\n",
+           (unsigned long)store_base,
+           (unsigned long)store_size);
     return false;
   }
 
+#if !SECURITY_POLICY_ENABLE_FLASH_STORE
+  memset(&g_sec.snapshot, 0, sizeof(g_sec.snapshot));
+  g_sec.snapshot.magic = SECURITY_STORE_MAGIC;
+  g_sec.snapshot.version = SECURITY_STORE_VERSION;
+  g_sec.snapshot.sequence = 0U;
+  g_sec.snapshot.pin_salt = HAL_GetUIDw0() ^ HAL_GetUIDw1() ^ HAL_GetUIDw2() ^ 0xA5C39F17UL;
+  sec_hash_pin(SECURITY_DEFAULT_PIN, g_sec.snapshot.pin_salt, g_sec.snapshot.pin_hash);
+  sec_append_event_locked(SECURITY_EVT_INIT, 0U, 0U, osKernelGetTickCount());
+  sec_compute_crc(&g_sec.snapshot);
+  g_sec.loaded_slot_index = 0U;
+  g_sec.runtime_lockout_until = 0U;
+  g_sec.initialized = true;
+  printf("[SEC] init: RAM-only mode (flash store disabled)\r\n");
+  return true;
+#endif
+
+#if SECURITY_POLICY_FORMAT_STORE_ON_BOOT
+  printf("[SEC] init: format-on-boot enabled\r\n");
+  if (!sec_erase_store()) {
+    printf("[SEC] init: format-on-boot erase failed\r\n");
+    return false;
+  }
+  memset(&g_sec.snapshot, 0, sizeof(g_sec.snapshot));
+  g_sec.snapshot.magic = SECURITY_STORE_MAGIC;
+  g_sec.snapshot.version = SECURITY_STORE_VERSION;
+  g_sec.snapshot.sequence = 0U;
+  g_sec.snapshot.pin_salt = HAL_GetUIDw0() ^ HAL_GetUIDw1() ^ HAL_GetUIDw2() ^ 0xA5C39F17UL;
+  sec_hash_pin(SECURITY_DEFAULT_PIN, g_sec.snapshot.pin_salt, g_sec.snapshot.pin_hash);
+  sec_append_event_locked(SECURITY_EVT_INIT, 0U, 0U, osKernelGetTickCount());
+  g_sec.loaded_slot_index = 0U;
+  if (!sec_persist_locked()) {
+    printf("[SEC] init: format-on-boot persist failed\r\n");
+    return false;
+  }
+  g_sec.runtime_lockout_until = 0U;
+  g_sec.initialized = true;
+  printf("[SEC] init: format-on-boot complete\r\n");
+  return true;
+#endif
+
   if (sec_load_latest(&g_sec.snapshot, &g_sec.loaded_slot_index)) {
+    printf("[SEC] init: loaded persisted snapshot\r\n");
     g_sec.runtime_lockout_until = (g_sec.snapshot.lockout_persist_ms > 0U)
                                 ? (osKernelGetTickCount() + g_sec.snapshot.lockout_persist_ms)
                                 : 0U;
     g_sec.initialized = true;
     return true;
   }
+
+  printf("[SEC] init: no valid snapshot, creating default\r\n");
 
   memset(&g_sec.snapshot, 0, sizeof(g_sec.snapshot));
   g_sec.snapshot.magic = SECURITY_STORE_MAGIC;
@@ -440,15 +540,20 @@ bool security_policy_init(void)
   sec_append_event_locked(SECURITY_EVT_INIT, 0U, 0U, osKernelGetTickCount());
 
   if (!sec_erase_store()) {
+    printf("[SEC] init: erase failed\r\n");
     return false;
   }
+  printf("[SEC] init: erase ok\r\n");
 
   g_sec.loaded_slot_index = 0U;
   if (!sec_persist_locked()) {
+    printf("[SEC] init: persist failed\r\n");
     return false;
   }
+  printf("[SEC] init: persist ok\r\n");
 
   g_sec.initialized = true;
+  printf("[SEC] init: success\r\n");
   return true;
 }
 
