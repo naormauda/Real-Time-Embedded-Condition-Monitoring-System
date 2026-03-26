@@ -72,10 +72,33 @@ static void I2C1_BusRecover(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
+static osMutexId_t uartLogMutexHandle = NULL;
+
+static void App_LogMutexInit(void)
+{
+  if ((uartLogMutexHandle == NULL) && (osKernelGetState() != osKernelInactive)) {
+    const osMutexAttr_t log_mutex_attr = { .name = "uartLogMutex" };
+    uartLogMutexHandle = osMutexNew(&log_mutex_attr);
+  }
+}
+
 int _write(int file, char *ptr, int len)
 {
   (void)file;
-  HAL_UART_Transmit(&huart3, (uint8_t*)ptr, len, HAL_MAX_DELAY);
+
+  if ((ptr == NULL) || (len <= 0)) {
+    return 0;
+  }
+
+  if ((uartLogMutexHandle != NULL) && (osKernelGetState() == osKernelRunning)) {
+    if (osMutexAcquire(uartLogMutexHandle, 50U) == osOK) {
+      (void)HAL_UART_Transmit(&huart3, (uint8_t*)ptr, (uint16_t)len, HAL_MAX_DELAY);
+      (void)osMutexRelease(uartLogMutexHandle);
+      return len;
+    }
+  }
+
+  (void)HAL_UART_Transmit(&huart3, (uint8_t*)ptr, (uint16_t)len, HAL_MAX_DELAY);
   return len;
 }
 
@@ -155,6 +178,7 @@ int main(void)
 
   /* Init scheduler */
   osKernelInitialize();
+  App_LogMutexInit();
   /* Call init function for freertos objects (in app_freertos.c) */
   MX_FREERTOS_Init();
 

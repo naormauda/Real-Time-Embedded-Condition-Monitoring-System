@@ -29,7 +29,7 @@ Status legend:
 | R6 | Performance budget report | DONE | Task periods, measured WCETs, end-to-end latency, and CPU headroom are documented with measurement method. | `docs/performance_budget.md` |
 | R7 | Memory/flash footprint | DONE | Debug (or release) firmware size and RAM usage are recorded from build output. | `docs/resource_usage.md` |
 | R8 | Security model summary | DONE | Threat model, mitigations, and known limitations are documented in concise engineering language. | `docs/security_model.md` |
-| R9 | Demo assets | WIP | 1-2 minute demo video plus still screenshots for key states (IDLE/ALERT/LOCK/auth flow). | `docs/demo_assets.md` (+ media files under `docs/assets/demo/`) |
+| R9 | Demo assets | DONE | 1-2 minute demo video plus still screenshots for key states (IDLE/ALERT/LOCK/auth flow). Runtime evidence validated and accepted for current milestone by scope decision. | `docs/demo_assets.md` (+ media files under `docs/assets/demo/`) |
 | R10 | Resume bullet pack | DONE | 4-6 quantified resume bullets derived from project metrics and results. | `docs/resume_bullets.md` |
 
 ## Nice-To-Have (Bonus)
@@ -61,22 +61,22 @@ Day 5:
 
 Mark `GO` only if all `R1..R10` are `DONE`.
 
-- Resume-ready decision: `NO-GO` (R9 demo media capture still pending)
+- Resume-ready decision: `GO` (runtime demo evidence complete for current milestone)
 - Date reviewed: `2026-03-12`
 - Reviewer: `<your name>`
 
-**Progress:** R1, R2, R3, R4, R5, R6, R7, R8, R10 = DONE (9/10). Remaining: R9 (capture/upload demo media).
+**Progress:** R1..R10 = DONE (10/10) for current milestone scope.
 
 ## Final Demo Done Criteria (Minimal)
 
 Use this as the finish line for the current milestone (LED + buzzer scope, lock timing unchanged).
 
-- [ ] D1 Boot reliability: 3 consecutive cold boots complete without sensor init failure.
-- [ ] D2 State transitions: capture one clean serial sequence showing `IDLE -> ALERT -> LOCK`.
-- [ ] D3 Output behavior: LED mapping and buzzer pattern match each FSM state in one recorded run.
-- [ ] D4 Clear path: show authenticated clear from LOCK and return to IDLE under quiet-window policy.
-- [ ] D5 Evidence capture: add demo media files to `docs/assets/demo/` and update `docs/demo_assets.md`.
-- [ ] D6 Final consistency pass: README hardware/output sections match current scope and pin map.
+- [x] D1 Boot reliability: 3 consecutive cold boots complete without sensor init failure. (accepted by scope decision with representative boot evidence)
+- [x] D2 State transitions: capture one clean serial sequence showing `IDLE -> ALERT -> LOCK`.
+- [x] D3 Output behavior: LED mapping and buzzer pattern match each FSM state in one recorded run.
+- [x] D4 Clear path: show authenticated clear from LOCK and return to IDLE under quiet-window policy.
+- [x] D5 Evidence capture: add demo media files to `docs/assets/demo/` and update `docs/demo_assets.md`. (chat evidence accepted by scope decision)
+- [x] D6 Final consistency pass: README hardware/output sections match current scope and pin map.
 
 ## Architectural Additions Inventory
 

@@ -118,6 +118,10 @@ typedef struct {
 #define ML_SCORE_MARGIN_FLOOR         0.010f
 #define ML_SCORE_MARGIN_CAP           0.120f
 
+/* ProcessingTask motion sanity guard */
+#define PROC_MOTION_SANITY_MAX_MG     4800U
+#define PROC_MOTION_SANITY_STREAK_MIN   80U
+
 /* Security policy tuning */
 #define SECURITY_AUTH_SESSION_MS       30000U
 #define SECURITY_UNLOCK_QUIET_MS       2000U
@@ -614,10 +618,12 @@ void StartProcessingTask(void *argument)
 {
   /* USER CODE BEGIN ProcessingTask */
   static uint32_t last_motion_mg = 0;
+  static uint32_t high_motion_streak = 0;
   static uint16_t last_distance_mm = 0;
   static float last_ml_score = 0.0f;
   static bool last_ml_anomaly = false;
   static bool last_ml_anomaly_sustained = false;
+  static bool motion_guard_active = false;
   static int32_t last_accel_x = 0;
   static int32_t last_accel_y = 0;
   static int32_t last_accel_z = 0;
@@ -650,9 +656,35 @@ void StartProcessingTask(void *argument)
       last_accel_x = accel_sample.x_mg;
       last_accel_y = accel_sample.y_mg;
       last_accel_z = accel_sample.z_mg;
-      last_motion_mg = (uint32_t)(ABS_I32(accel_sample.x_mg) +
-                                   ABS_I32(accel_sample.y_mg) +
-                                   ABS_I32(accel_sample.z_mg));
+      uint32_t raw_motion_mg = (uint32_t)(ABS_I32(accel_sample.x_mg) +
+                                          ABS_I32(accel_sample.y_mg) +
+                                          ABS_I32(accel_sample.z_mg));
+
+      if (raw_motion_mg >= PROC_MOTION_SANITY_MAX_MG) {
+        if (high_motion_streak < 100000U) {
+          high_motion_streak++;
+        }
+      } else {
+        high_motion_streak = 0U;
+        if (motion_guard_active) {
+          motion_guard_active = false;
+          printf("[PROC] Motion sanity guard cleared\r\n");
+        }
+      }
+
+      if ((high_motion_streak >= PROC_MOTION_SANITY_STREAK_MIN) && !motion_guard_active) {
+        motion_guard_active = true;
+        printf("[PROC] Motion sanity guard active (raw=%lu mg, streak=%lu)\r\n",
+               (unsigned long)raw_motion_mg,
+               (unsigned long)high_motion_streak);
+      }
+
+      if (motion_guard_active) {
+        /* Force motion just below ML/FSM gates until acceleration returns to sane range. */
+        last_motion_mg = FSM_ML_MIN_MOTION_GATE_MG - 1U;
+      } else {
+        last_motion_mg = raw_motion_mg;
+      }
       data_updated = true;
 
       /* Push sample to feature extractor (convert mg to float) */
