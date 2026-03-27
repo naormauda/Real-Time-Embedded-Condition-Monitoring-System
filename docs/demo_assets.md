@@ -30,43 +30,7 @@ Recommended storage path:
 
 ---
 
-## 2. Demo Script (90s Target)
-
-### Segment A (0:00-0:15) - System intro
-
-- Show board and sensors connected.
-- Open serial terminal (115200 baud).
-- Narration: "STM32H563, FreeRTOS pipeline, on-device anomaly detection, fail-secure lock FSM."
-
-### Segment B (0:15-0:35) - IDLE to ALERT
-
-- Start from calm state.
-- Move object within ToF threshold or induce motion.
-- Capture serial lines showing transition to `ALERT`.
-- Capture screenshot: `alert_state.png`.
-
-### Segment C (0:35-0:55) - ALERT to LOCK
-
-- Sustain threat condition.
-- Capture LOCK transition and actuator behavior (red LED + buzzer).
-- Capture screenshot: `lock_state.png`.
-
-### Segment D (0:55-1:20) - Authentication flow
-
-- Enter `AUTH <pin>` in terminal.
-- Show successful auth status.
-- Keep threat quiet for required window.
-- Capture `LOCK -> IDLE` clear behavior.
-- Capture screenshots: `auth_success.png`, `lock_clear.png`.
-
-### Segment E (1:20-1:30) - Wrap-up
-
-- Show `SEC_STATUS` and optionally `SEC_LOG` output.
-- Narration: "Persistent lockout, audit log, and fail-secure policy verified."
-
----
-
-## 3. Capture Checklist
+## 2. Capture Checklist
 
 - [ ] Video recorded (60-120s, readable terminal text)
 - [ ] `idle_state.png` captured
@@ -81,7 +45,7 @@ Recommended storage path:
 
 ---
 
-## 4. Validation Scenarios (Run In Order)
+## 3. Validation Scenarios (Run In Order)
 
 Use this table during capture so D1-D5 evidence is complete in one pass.
 
@@ -95,7 +59,7 @@ Use this table during capture so D1-D5 evidence is complete in one pass.
 
 ---
 
-## 5. Evidence Block (Fill After Capture)
+## 4. Evidence Block (Fill After Capture)
 
 | Asset | Path | Status |
 |---|---|---|
@@ -110,7 +74,7 @@ Use this table during capture so D1-D5 evidence is complete in one pass.
 
 All required runtime evidence for this milestone is complete; asset file copy and full media package are explicitly deferred by scope decision.
 
-## 6. Chat-Sourced Evidence Log
+## 5. Chat-Sourced Evidence Log
 
 - 2026-03-26: User provided monitor screenshots proving S2, S3, S4, and S5 behavior.
 - S4 proof: AUTH success, auth session open, LOCK -> IDLE authenticated clear.

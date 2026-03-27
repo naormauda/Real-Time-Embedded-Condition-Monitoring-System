@@ -105,33 +105,9 @@ gantt
 
 ---
 
-## 🎥 Evidence And Demo Assets
+## 🎥 Demo Video
 
-Media and capture checklist are tracked in `docs/demo_assets.md`.
-
-Expected asset paths:
-- `docs/assets/demo/smart_safe_demo.mp4`
-- `docs/assets/demo/idle_state.png`
-- `docs/assets/demo/alert_state.png`
-- `docs/assets/demo/lock_state.png`
-- `docs/assets/demo/auth_success.png`
-- `docs/assets/demo/lock_clear.png`
-- `docs/assets/demo/serial_plotter_fft_spike.png`
-- `docs/assets/demo/serial_plotter_idle_baseline.png`
-
-### Visual Proof Of Real-Time Performance
-
-Required visual evidence for review:
-- Serial Plotter screenshot showing FFT/dominant-frequency spike during induced vibration.
-- Serial Plotter screenshot showing idle baseline signal stability.
-- The real-time task design table in this README (period, priority, WCET, queue depth).
-
-Recommended final demo flow:
-1. Show heartbeat/IDLE telemetry.
-2. Trigger ALERT (motion or proximity) and hold long enough for escalation.
-3. Show LOCK reaction (visual + audio + lock actuator path).
-4. Authenticate and clear LOCK under quiet-window policy.
-5. End with `SEC_STATUS` and short `SEC_LOG` proof.
+[Watch the demo video (YouTube Shorts)](https://youtube.com/shorts/4g8GlPfXomg)
 
 ---
 
